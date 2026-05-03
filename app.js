@@ -184,76 +184,93 @@ function loadBatteries() {
 function saveReading() {
   var c = val('rd-circuit');
   if(!c || !formations[c]){ alert('Please select an active circuit first.'); return; }
-  var bats = formations[c].batteries.map(function(sn, i) {
-    return {
-      sn: sn,
-      voltage: (document.getElementById('rv'+i)||{}).value||'',
-      current: (document.getElementById('rc'+i)||{}).value||'',
-      sg: (document.getElementById('rg'+i)||{}).value||'',
-      status: (document.getElementById('rs'+i)||{}).value||''
-    };
+
+  var bats = [];
+  var rows = document.querySelectorAll('#rd-rows tr');
+  rows.forEach(function(tr, i) {
+    var snCell = tr.querySelectorAll('td')[1];
+    var sn = snCell ? snCell.textContent.trim() : (formations[c].batteries[i]||'');
+    var voltage = (document.getElementById('rv'+i)||{}).value||'';
+    var current = (document.getElementById('rc'+i)||{}).value||'';
+    var sg = (document.getElementById('rg'+i)||{}).value||'';
+    var status = (document.getElementById('rs'+i)||{}).value||'OK';
+    bats.push({sn:sn, voltage:voltage, current:current, sg:sg, status:status});
   });
+
+  if(bats.length === 0){ alert('No batteries loaded. Please select a circuit first.'); return; }
+
   var rid = Date.now();
-  var r = {
-    id: rid,
-    circuit: c,
-    type: formations[c].type,
-    dt: val('rd-dt'),
-    op: val('rd-op')||'Unknown',
-    temp: val('rd-temp'),
-    step: val('rd-step'),
-    mode: val('rd-mode'),
-    fsg: val('rd-fsg'),
-    batteries: bats
-  };
+  var dt = val('rd-dt');
+  var op = val('rd-op')||'Unknown';
+  var temp = val('rd-temp');
+  var step = val('rd-step');
+  var mode = val('rd-mode');
+  var fsg = val('rd-fsg');
+  var btype = formations[c].type;
 
   setBtnLoading('btn-save-reading', true);
   var msg = document.getElementById('rd-sync-msg');
-  msg.innerHTML = '<span class="spinner"></span> Saving to Google Sheets...';
+  msg.innerHTML = '<span class="spinner"></span> Saving '+bats.length+' batteries to Google Sheets...';
   msg.style.background='#e8f8f0'; msg.style.color='#27ae60'; msg.style.display='block';
 
-  // Save each battery row to Sheets
-  var promises = bats.map(function(b) {
-    return fetch(SHEETS_URL, {
+  // Save sequentially to avoid rate limits
+  var saved = 0;
+  var failed = 0;
+
+  function saveNext(index) {
+    if(index >= bats.length) {
+      // All done
+      setBtnLoading('btn-save-reading', false);
+      if(failed === 0) {
+        formations[c].readingCount = (formations[c].readingCount||0) + 1;
+        totalReadings++;
+        updateDash();
+        // Update reading count in Formations sheet
+        sheetsPost({
+          sheet: 'Formations',
+          action: 'update',
+          keyCol: 1,
+          keyVal: c,
+          updateCol: 9,
+          updateVal: formations[c].readingCount
+        }, null);
+        msg.innerHTML = '&#10003; All '+bats.length+' batteries saved to Google Sheets!';
+        setTimeout(function(){ msg.style.display='none'; }, 5000);
+        show('rd-ok', 3000);
+        setNow();
+        addSyncLog(c+' — '+bats.length+' batteries', 'Success');
+      } else {
+        msg.innerHTML = '&#10006; '+failed+' batteries failed to save. Check internet and try again.';
+        msg.style.background='#fdecea'; msg.style.color='#c0392b';
+        addSyncLog(c, failed+' batteries failed');
+        setTimeout(function(){ msg.style.display='none'; }, 6000);
+      }
+      return;
+    }
+
+    var b = bats[index];
+    msg.innerHTML = '<span class="spinner"></span> Saving battery '+(index+1)+' of '+bats.length+': '+b.sn+'...';
+
+    fetch(SHEETS_URL, {
       method: 'POST',
       body: JSON.stringify({
         sheet: 'Readings',
         headers: ['Reading ID','Circuit','Battery Type','Battery S/N','Date Time','Operator','Mode','Step No','Temperature (C)','Voltage (V)','Current (A)','SP Gravity','Battery Status','Final SG','Saved At'],
-        row: [rid, c, r.type, b.sn, r.dt, r.op, r.mode, r.step||'', r.temp||'', b.voltage||'', b.current||'', b.sg||'', b.status||'', r.fsg||'', new Date().toISOString()]
+        row: [rid, c, btype, b.sn, dt, op, mode, step||'', temp||'', b.voltage||'', b.current||'', b.sg||'', b.status||'', fsg||'', new Date().toISOString()]
       })
-    }).then(function(res){ return res.json(); });
-  });
+    })
+    .then(function(res){ return res.json(); })
+    .then(function(data){
+      if(data.status === 'ok') { saved++; } else { failed++; }
+      saveNext(index + 1);
+    })
+    .catch(function(){
+      failed++;
+      saveNext(index + 1);
+    });
+  }
 
-  Promise.all(promises).then(function() {
-    // Update reading count in formations sheet
-    formations[c].readingCount = (formations[c].readingCount||0) + 1;
-    totalReadings++;
-    readingsCache.unshift(r);
-    if(readingsCache.length > 200) readingsCache.pop();
-
-    sheetsPost({
-      sheet: 'Formations',
-      action: 'update',
-      keyCol: 1,
-      keyVal: c,
-      updateCol: 9, // Reading Count column
-      updateVal: formations[c].readingCount
-    }, null);
-
-    setBtnLoading('btn-save-reading', false);
-    updateDash();
-    msg.innerHTML = '&#10003; Saved to Google Sheets successfully!';
-    setTimeout(function(){ msg.style.display='none'; }, 4000);
-    show('rd-ok', 3000);
-    setNow();
-    addSyncLog(c+' — '+bats.length+' batteries', 'Success');
-  }).catch(function(e) {
-    setBtnLoading('btn-save-reading', false);
-    msg.innerHTML = '&#10006; Save failed! Check internet connection.';
-    msg.style.background='#fdecea'; msg.style.color='#c0392b';
-    addSyncLog(c, 'Failed: '+e.message);
-    setTimeout(function(){ msg.style.display='none'; }, 6000);
-  });
+  saveNext(0);
 }
 
 // ─── COMPLETE FORMATION ───────────────────────────────────────────────────────
