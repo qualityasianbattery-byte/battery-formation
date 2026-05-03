@@ -1,195 +1,176 @@
-// ─── DATA ───────────────────────────────────────────────────────────────────
-var CIRCUITS=['G1-1','G1-2','G1-3','G1-4','G1-5','G1-6','G1-7','G1-8','G1-9','G1-10','G1-11','G1-12',
-              'G2-1','G2-2','G2-3','G2-4','G2-5','G2-6','G2-7','G2-8',
-              'G3-1','G3-2','G3-3','G3-4','G3-5','G3-6','G3-7','G3-8'];
+// ─── CONFIG ───────────────────────────────────────────────────────────────────
+var SHEETS_URL = 'https://script.google.com/macros/s/AKfycbxyp508k0wfFeEFRRB4N_gtBRH9LLD-AdA84vowgIQHT0Y7XKyJKVMmqokwsQ06WQ_m/exec';
 
-var BTYPES=['AB45STB','AB52STB','AB85STB','AB100STB','AB150STB','AB200STB',
-            'AB42AMB','AU35','YS35','AB72AMB','YS70','AU70','AB77AMB','AB87AMB',
-            'AU80','YS80','AB97AMB','YS100','AU100','AB114AMB','YS130','AU130',
-            'AB144AMB','AU150','YS150','AB164AMB','AB194AMB','AB214AMB',
-            'AB44ADB','AB55ADB','AB66ADB','AB88ADB','AB100ADB',
-            'AWB900','AWB1100','AWB1400','AWB1600',
-            'AB40TB','AB65TB','AB105TB','AB150TTB','AB160TB','AB177G','AB180','AB200TB',
-            '240TB','177GOLD','155GOLD','250GOLD','260GOLD',
-            'JCT100','JCT150','JCT200','JCT240','KBH',
-            '18TKTB','18KJTB','20TGTB','20LBTB','18LBFB','18TRTB','18RRTB',
-            '18GATB','18HNTB','BYPTB','18BYPFB','18TITB','18PBTB','18TMTB',
-            'SB1600','18DRTB','18SFTB','18NGTB','999TB','TRS777',
-            '1400ERTB(Sample)','16SMTB','18JNFB','20JNTB','IP200','IP2000',
-            'IP1500','18BTTB','20GTTB'];
+var CIRCUITS = ['G1-1','G1-2','G1-3','G1-4','G1-5','G1-6','G1-7','G1-8','G1-9','G1-10','G1-11','G1-12',
+                'G2-1','G2-2','G2-3','G2-4','G2-5','G2-6','G2-7','G2-8',
+                'G3-1','G3-2','G3-3','G3-4','G3-5','G3-6','G3-7','G3-8'];
 
-// ─── STATE ───────────────────────────────────────────────────────────────────
-var formations={}, readings=[], notifications=[], syncLogs=[];
-var settings={
-  phone:'', method:'WhatsApp', supervisor:'', dept:'Battery Formation Dept',
-  sheetsUrl:'https://script.google.com/macros/s/AKfycbwLztGVlMV6Z5MTYuzwBfVNPLIYS84v0LnbiFd-kAPUdvCePHGelzWQ2tbSuZ92cEDjfg/exec'
-};
-var vRec=null, vTarget=null;
-var PAGE_SIZE=100, readingsPage=0;
+var BTYPES = ['AB45STB','AB52STB','AB85STB','AB100STB','AB150STB','AB200STB',
+              'AB42AMB','AU35','YS35','AB72AMB','YS70','AU70','AB77AMB','AB87AMB',
+              'AU80','YS80','AB97AMB','YS100','AU100','AB114AMB','YS130','AU130',
+              'AB144AMB','AU150','YS150','AB164AMB','AB194AMB','AB214AMB',
+              'AB44ADB','AB55ADB','AB66ADB','AB88ADB','AB100ADB',
+              'AWB900','AWB1100','AWB1400','AWB1600',
+              'AB40TB','AB65TB','AB105TB','AB150TTB','AB160TB','AB177G','AB180','AB200TB',
+              '240TB','177GOLD','155GOLD','250GOLD','260GOLD',
+              'JCT100','JCT150','JCT200','JCT240','KBH',
+              '18TKTB','18KJTB','20TGTB','20LBTB','18LBFB','18TRTB','18RRTB',
+              '18GATB','18HNTB','BYPTB','18BYPFB','18TITB','18PBTB','18TMTB',
+              'SB1600','18DRTB','18SFTB','18NGTB','999TB','TRS777',
+              '1400ERTB(Sample)','16SMTB','18JNFB','20JNTB','IP200','IP2000',
+              'IP1500','18BTTB','20GTTB'];
+
+// ─── STATE (in-memory only, loaded from Sheets on startup) ───────────────────
+var formations = {};
+var readingsCache = [];   // only last 200 for display
+var totalReadings = 0;
+var notifications = [];
+var syncLogs = [];
+var settings = { phone:'', method:'WhatsApp', supervisor:'', dept:'Battery Formation Dept' };
+var vRec = null, vTarget = null;
+var PAGE_SIZE = 50;
+var currentPage = 0;
+var isLoading = false;
 
 // ─── INIT ────────────────────────────────────────────────────────────────────
-function init(){
-  load();
+function init() {
+  loadSettingsLocal();
   setInterval(function(){
-    var el=document.getElementById('clock');
-    if(el) el.textContent=new Date().toLocaleString('en-GB',{weekday:'short',year:'numeric',month:'short',day:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit'});
-  },1000);
+    var el = document.getElementById('clock');
+    if(el) el.textContent = new Date().toLocaleString('en-GB',{weekday:'short',year:'numeric',month:'short',day:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  }, 1000);
   buildTypeSelect();
   buildCircuitSelects();
-  buildCircuitGrids();
   buildBattFields();
   setNow();
-  updateDash();
   loadSettingsUI();
-  updateSheetsStatus();
+  showLoadingOverlay(true);
+  loadAllFromSheets();
 }
 
-// ─── STORAGE (chunked to avoid 5MB limit) ────────────────────────────────────
-function save(){
-  try{
-    localStorage.setItem('qab_f',JSON.stringify(formations));
-    localStorage.setItem('qab_n',JSON.stringify(notifications));
-    localStorage.setItem('qab_s',JSON.stringify(syncLogs.slice(-200))); // keep last 200
-    localStorage.setItem('qab_cfg',JSON.stringify(settings));
-    // Save readings in chunks of 200
-    var chunks=Math.ceil(readings.length/200)||1;
-    localStorage.setItem('qab_r_chunks',chunks);
-    for(var i=0;i<chunks;i++){
-      localStorage.setItem('qab_r_'+i,JSON.stringify(readings.slice(i*200,(i+1)*200)));
-    }
-  }catch(e){console.warn('Storage full — export data to Sheets.',e);}
+// ─── LOADING OVERLAY ─────────────────────────────────────────────────────────
+function showLoadingOverlay(show) {
+  var el = document.getElementById('loading-overlay');
+  if(el) el.style.display = show ? 'flex' : 'none';
 }
 
-function load(){
-  try{
-    var f=localStorage.getItem('qab_f');
-    var n=localStorage.getItem('qab_n');
-    var s=localStorage.getItem('qab_s');
-    var c=localStorage.getItem('qab_cfg');
-    if(f) formations=JSON.parse(f);
-    if(n) notifications=JSON.parse(n);
-    if(s) syncLogs=JSON.parse(s);
-    if(c) settings=JSON.parse(c);
-    // Load chunked readings
-    readings=[];
-    var chunks=parseInt(localStorage.getItem('qab_r_chunks'))||0;
-    for(var i=0;i<chunks;i++){
-      var chunk=localStorage.getItem('qab_r_'+i);
-      if(chunk) readings=readings.concat(JSON.parse(chunk));
-    }
-  }catch(e){ console.warn('Load error',e); }
+// ─── GOOGLE SHEETS API ───────────────────────────────────────────────────────
+function sheetsGet(sheetName, callback) {
+  fetch(SHEETS_URL + '?sheet=' + encodeURIComponent(sheetName))
+    .then(function(r){ return r.json(); })
+    .then(function(d){ callback(null, d.rows || []); })
+    .catch(function(e){ callback(e, []); });
 }
 
-// ─── BUILD UI ─────────────────────────────────────────────────────────────────
-function buildTypeSelect(){
-  var sel=document.getElementById('nf-type');
-  sel.innerHTML='';
-  BTYPES.forEach(function(t){
-    var o=document.createElement('option');o.value=t;o.textContent=t;sel.appendChild(o);
-  });
+function sheetsPost(payload, callback) {
+  fetch(SHEETS_URL, {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  })
+  .then(function(r){ return r.json(); })
+  .then(function(d){ if(callback) callback(null, d); })
+  .catch(function(e){ if(callback) callback(e, null); });
 }
 
-function buildCircuitSelects(){
-  ['nf-circuit','rd-circuit'].forEach(function(id){
-    var sel=document.getElementById(id);
-    sel.innerHTML='<option value="">-- Select --</option>';
-    ['G1','G2','G3'].forEach(function(g){
-      var og=document.createElement('optgroup');
-      og.label='Group '+g.slice(1)+' ('+g+')';
-      CIRCUITS.filter(function(c){return c.startsWith(g+'-');}).forEach(function(c){
-        var o=document.createElement('option');o.value=c;o.textContent=c;og.appendChild(o);
+// ─── LOAD ALL DATA FROM SHEETS ON STARTUP ────────────────────────────────────
+function loadAllFromSheets() {
+  setText('loading-msg', 'Loading formations from Google Sheets...');
+  sheetsGet('Formations', function(err, rows) {
+    if(err) { showError('Cannot connect to Google Sheets. Check your internet connection.'); showLoadingOverlay(false); return; }
+    formations = {};
+    rows.forEach(function(r) {
+      if(!r['Circuit']) return;
+      var sns = r['Battery SNs'] ? r['Battery SNs'].toString().split(',') : [];
+      formations[r['Circuit']] = {
+        circuit: r['Circuit'],
+        type: r['Type'] || '',
+        start: r['Start'] || '',
+        end: r['Expected End'] || '',
+        sg: r['Initial SG'] || '',
+        batteries: sns,
+        readingCount: parseInt(r['Reading Count']) || 0,
+        complete: r['Status'] === 'Complete',
+        completeTick: r['Status'] === 'Complete',
+        completedAt: r['Completed At'] || '',
+        at: r['Registered At'] || ''
+      };
+    });
+    setText('loading-msg', 'Loading readings summary...');
+    sheetsGet('Readings', function(err2, rrows) {
+      totalReadings = rrows.length;
+      // Cache last 200 for display
+      readingsCache = rrows.slice(-200).reverse();
+      setText('loading-msg', 'Loading completed formations...');
+      sheetsGet('Completed Formations', function(err3, crows) {
+        crows.forEach(function(r) {
+          if(r['Circuit'] && formations[r['Circuit']]) {
+            formations[r['Circuit']].complete = true;
+            formations[r['Circuit']].completeTick = true;
+            formations[r['Circuit']].completedAt = r['Completed At'] || '';
+          }
+        });
+        showLoadingOverlay(false);
+        buildCircuitGrids();
+        updateDash();
+        updateSheetsStatus(true);
       });
-      sel.appendChild(og);
     });
   });
-}
-
-function buildCircuitGrids(){
-  ['G1','G2','G3'].forEach(function(g){
-    var grid=document.getElementById('cg-'+g);
-    if(!grid) return;
-    grid.innerHTML='';
-    CIRCUITS.filter(function(c){return c.startsWith(g+'-');}).forEach(function(c){
-      var f=formations[c];
-      var state=f?(f.complete?'complete':'running'):'';
-      var lbl=f?(f.complete?'&#10003; Done':'Active'):'Empty';
-      var btn=document.createElement('button');
-      btn.className='circuit-btn '+(state||'');
-      btn.id='cb-'+c.replace(/-/g,'_');
-      btn.innerHTML='<strong>'+c+'</strong><br><span style="font-size:9px;opacity:0.75">'+lbl+'</span>';
-      btn.setAttribute('onclick','showDetail("'+c+'")');
-      grid.appendChild(btn);
-    });
-  });
-}
-
-function buildBattFields(){
-  var g=document.getElementById('nf-batt-grid');
-  g.innerHTML='';
-  for(var i=1;i<=20;i++){
-    var d=document.createElement('div');
-    d.innerHTML='<label>Battery '+i+' S/N</label><input type="text" id="ns'+i+'" placeholder="SN-'+String(i).padStart(3,'0')+'">';
-    g.appendChild(d);
-  }
-}
-
-function setNow(){
-  var now=new Date();
-  var local=new Date(now-now.getTimezoneOffset()*60000).toISOString().slice(0,16);
-  document.querySelectorAll('input[type="datetime-local"]').forEach(function(el){el.value=local;});
 }
 
 // ─── REGISTER FORMATION ───────────────────────────────────────────────────────
-function registerFormation(){
-  var c=document.getElementById('nf-circuit').value;
-  var err=document.getElementById('nf-err');
-  err.style.display='none';
-  if(!c){err.textContent='Please select a circuit.';err.style.display='block';return;}
-  if(formations[c]&&!formations[c].complete){err.textContent='Circuit '+c+' already has an active formation.';err.style.display='block';return;}
-  var sns=[];
-  for(var i=1;i<=20;i++){
-    var v=document.getElementById('ns'+i).value.trim();
-    if(v) sns.push(v);
-  }
-  if(!sns.length){err.textContent='Enter at least one battery serial number.';err.style.display='block';return;}
-  formations[c]={
-    circuit:c,
-    type:document.getElementById('nf-type').value,
-    start:document.getElementById('nf-start').value,
-    end:document.getElementById('nf-end').value,
-    sg:document.getElementById('nf-sg').value,
-    batteries:sns,
-    readings:[],
-    complete:false,
-    completeTick:false,
-    at:new Date().toISOString()
+function registerFormation() {
+  var c = val('nf-circuit');
+  var err = document.getElementById('nf-err');
+  err.style.display = 'none';
+  if(!c){ err.textContent='Please select a circuit.'; err.style.display='block'; return; }
+  if(formations[c] && !formations[c].complete){ err.textContent='Circuit '+c+' already has an active formation.'; err.style.display='block'; return; }
+  var sns = [];
+  for(var i=1;i<=20;i++){ var v=val('ns'+i); if(v.trim()) sns.push(v.trim()); }
+  if(!sns.length){ err.textContent='Enter at least one battery serial number.'; err.style.display='block'; return; }
+
+  var f = {
+    circuit: c,
+    type: val('nf-type'),
+    start: val('nf-start'),
+    end: val('nf-end'),
+    sg: val('nf-sg'),
+    batteries: sns,
+    readingCount: 0,
+    complete: false,
+    completeTick: false,
+    at: new Date().toISOString()
   };
-  save();
-  buildCircuitGrids();
-  updateDash();
-  updateCompleteList();
-  updateRptTable();
-  // Sync formation to sheets
-  postToSheets({
-    sheet:'Formations',
-    headers:['Circuit','Type','Batteries Count','Start','Expected End','Initial SG','Registered At'],
-    row:[c,formations[c].type,sns.length,formations[c].start||'',formations[c].end||'',formations[c].sg||'',formations[c].at]
+  formations[c] = f;
+
+  setBtnLoading('btn-register', true);
+  sheetsPost({
+    sheet: 'Formations',
+    headers: ['Circuit','Type','Battery SNs','Batteries Count','Start','Expected End','Initial SG','Status','Reading Count','Completed At','Registered At'],
+    row: [c, f.type, sns.join(','), sns.length, f.start, f.end, f.sg, 'Active', 0, '', f.at]
+  }, function(err2) {
+    setBtnLoading('btn-register', false);
+    if(err2){ showError('Failed to save to Google Sheets. Check connection.'); return; }
+    buildCircuitGrids();
+    updateDash();
+    updateCompleteList();
+    updateRptTable();
+    show('nf-ok', 4000);
   });
-  show('nf-ok',4000);
 }
 
-// ─── ADD READING ──────────────────────────────────────────────────────────────
-function loadBatteries(){
-  var c=document.getElementById('rd-circuit').value;
-  var tbody=document.getElementById('rd-rows');
-  var hint=document.getElementById('rd-hint');
-  tbody.innerHTML='';
-  if(!c||!formations[c]){hint.style.display='block';return;}
-  hint.style.display='none';
-  formations[c].batteries.forEach(function(sn,i){
-    var tr=document.createElement('tr');
-    if(i%2) tr.className='row-alt';
-    tr.innerHTML='<td style="font-weight:600">'+(i+1)+'</td>'+
+// ─── LOAD BATTERIES FOR READING ──────────────────────────────────────────────
+function loadBatteries() {
+  var c = val('rd-circuit');
+  var tbody = document.getElementById('rd-rows');
+  var hint = document.getElementById('rd-hint');
+  tbody.innerHTML = '';
+  if(!c || !formations[c]){ hint.style.display='block'; return; }
+  hint.style.display = 'none';
+  formations[c].batteries.forEach(function(sn, i) {
+    var tr = document.createElement('tr');
+    if(i%2) tr.className = 'row-alt';
+    tr.innerHTML = '<td style="font-weight:600">'+(i+1)+'</td>'+
       '<td style="font-weight:500">'+sn+'</td>'+
       '<td><input type="number" id="rv'+i+'" placeholder="12.60" step="0.01" style="width:80px"></td>'+
       '<td><input type="number" id="rc'+i+'" placeholder="5.00" step="0.01" style="width:80px"></td>'+
@@ -199,183 +180,241 @@ function loadBatteries(){
   });
 }
 
-function saveReading(doSync){
-  var c=document.getElementById('rd-circuit').value;
-  if(!c||!formations[c]){alert('Please select an active circuit first.');return;}
-  var bats=formations[c].batteries.map(function(sn,i){
-    return{
-      sn:sn,
-      voltage:(document.getElementById('rv'+i)||{}).value||'',
-      current:(document.getElementById('rc'+i)||{}).value||'',
-      sg:(document.getElementById('rg'+i)||{}).value||'',
-      status:(document.getElementById('rs'+i)||{}).value||''
+// ─── SAVE READING ─────────────────────────────────────────────────────────────
+function saveReading() {
+  var c = val('rd-circuit');
+  if(!c || !formations[c]){ alert('Please select an active circuit first.'); return; }
+  var bats = formations[c].batteries.map(function(sn, i) {
+    return {
+      sn: sn,
+      voltage: (document.getElementById('rv'+i)||{}).value||'',
+      current: (document.getElementById('rc'+i)||{}).value||'',
+      sg: (document.getElementById('rg'+i)||{}).value||'',
+      status: (document.getElementById('rs'+i)||{}).value||''
     };
   });
-  var r={
-    id:Date.now(),
-    circuit:c,
-    type:formations[c].type,
-    dt:document.getElementById('rd-dt').value,
-    op:document.getElementById('rd-op').value||'Unknown',
-    temp:document.getElementById('rd-temp').value,
-    step:document.getElementById('rd-step').value,
-    mode:document.getElementById('rd-mode').value,
-    fsg:document.getElementById('rd-fsg').value,
-    batteries:bats,
-    synced:false
+  var rid = Date.now();
+  var r = {
+    id: rid,
+    circuit: c,
+    type: formations[c].type,
+    dt: val('rd-dt'),
+    op: val('rd-op')||'Unknown',
+    temp: val('rd-temp'),
+    step: val('rd-step'),
+    mode: val('rd-mode'),
+    fsg: val('rd-fsg'),
+    batteries: bats
   };
-  // Don't store battery data in formation.readings to save space — just count
-  if(!formations[c].readingCount) formations[c].readingCount=0;
-  formations[c].readingCount++;
-  readings.push(r);
-  save();
+
+  setBtnLoading('btn-save-reading', true);
+  var msg = document.getElementById('rd-sync-msg');
+  msg.innerHTML = '<span class="spinner"></span> Saving to Google Sheets...';
+  msg.style.background='#e8f8f0'; msg.style.color='#27ae60'; msg.style.display='block';
+
+  // Save each battery row to Sheets
+  var promises = bats.map(function(b) {
+    return fetch(SHEETS_URL, {
+      method: 'POST',
+      body: JSON.stringify({
+        sheet: 'Readings',
+        headers: ['Reading ID','Circuit','Battery Type','Battery S/N','Date Time','Operator','Mode','Step No','Temperature (C)','Voltage (V)','Current (A)','SP Gravity','Battery Status','Final SG','Saved At'],
+        row: [rid, c, r.type, b.sn, r.dt, r.op, r.mode, r.step||'', r.temp||'', b.voltage||'', b.current||'', b.sg||'', b.status||'', r.fsg||'', new Date().toISOString()]
+      })
+    }).then(function(res){ return res.json(); });
+  });
+
+  Promise.all(promises).then(function() {
+    // Update reading count in formations sheet
+    formations[c].readingCount = (formations[c].readingCount||0) + 1;
+    totalReadings++;
+    readingsCache.unshift(r);
+    if(readingsCache.length > 200) readingsCache.pop();
+
+    sheetsPost({
+      sheet: 'Formations',
+      action: 'update',
+      keyCol: 1,
+      keyVal: c,
+      updateCol: 9, // Reading Count column
+      updateVal: formations[c].readingCount
+    }, null);
+
+    setBtnLoading('btn-save-reading', false);
+    updateDash();
+    msg.innerHTML = '&#10003; Saved to Google Sheets successfully!';
+    setTimeout(function(){ msg.style.display='none'; }, 4000);
+    show('rd-ok', 3000);
+    setNow();
+    addSyncLog(c+' — '+bats.length+' batteries', 'Success');
+  }).catch(function(e) {
+    setBtnLoading('btn-save-reading', false);
+    msg.innerHTML = '&#10006; Save failed! Check internet connection.';
+    msg.style.background='#fdecea'; msg.style.color='#c0392b';
+    addSyncLog(c, 'Failed: '+e.message);
+    setTimeout(function(){ msg.style.display='none'; }, 6000);
+  });
+}
+
+// ─── COMPLETE FORMATION ───────────────────────────────────────────────────────
+function toggleComplete(c) {
+  if(!formations[c]) return;
+  formations[c].completeTick = !formations[c].completeTick;
+  formations[c].complete = formations[c].completeTick;
+  if(formations[c].complete) {
+    formations[c].completedAt = new Date().toISOString();
+    sendNotif(c);
+    // Save to Completed Formations sheet
+    sheetsPost({
+      sheet: 'Completed Formations',
+      headers: ['Circuit','Type','Batteries','Start','Expected End','Completed At','Total Readings','Supervisor'],
+      row: [c, formations[c].type, formations[c].batteries.length, formations[c].start||'', formations[c].end||'', formations[c].completedAt, formations[c].readingCount||0, settings.supervisor||'']
+    }, null);
+    // Update status in Formations sheet
+    sheetsPost({
+      sheet: 'Formations',
+      action: 'update',
+      keyCol: 1,
+      keyVal: c,
+      updateCol: 8, // Status column
+      updateVal: 'Complete'
+    }, null);
+  }
+  buildCircuitGrids();
+  updateCompleteList();
   updateDash();
   updateRptTable();
-  show('rd-ok',3000);
-  setNow();
-  if(doSync) syncReading(r);
 }
 
-// ─── GOOGLE SHEETS SYNC ───────────────────────────────────────────────────────
-function postToSheets(payload){
-  if(!settings.sheetsUrl) return;
-  return fetch(settings.sheetsUrl,{
-    method:'POST',
-    body:JSON.stringify(payload)
-  }).then(function(r){return r.json();});
+function sendNotif(c) {
+  var f = formations[c];
+  var phone = settings.phone||'(not set)';
+  var method = settings.method||'WhatsApp';
+  var msg = 'FORMATION COMPLETE\nCircuit: '+c+'\nType: '+f.type+'\nBatteries: '+f.batteries.length+'\nCompleted: '+new Date().toLocaleString()+'\nDept: '+(settings.dept||'Battery Formation');
+  notifications.push({time:new Date().toLocaleString(),circuit:c,msg:msg,method:method,phone:phone});
+  alert('Notification sent via '+method+' to '+phone+':\n\n'+msg);
 }
 
-function syncReading(r){
-  if(!settings.sheetsUrl){alert('Set Google Sheets URL in Settings first.');return;}
-  var msg=document.getElementById('rd-sync-msg');
-  msg.innerHTML='<span class="spinner"></span>Syncing to Google Sheets...';
-  msg.style.background='#e8f8f0';msg.style.color='#27ae60';msg.style.display='block';
+// ─── BUILD UI ─────────────────────────────────────────────────────────────────
+function buildTypeSelect() {
+  var sel = document.getElementById('nf-type');
+  sel.innerHTML = '';
+  BTYPES.forEach(function(t){ var o=document.createElement('option');o.value=t;o.textContent=t;sel.appendChild(o); });
+}
 
-  var rows=r.batteries.map(function(b){
-    return postToSheets({
-      sheet:'Readings',
-      headers:['Reading ID','Circuit','Battery Type','Battery S/N','Date Time','Operator','Mode','Step No','Temperature (C)','Voltage (V)','Current (A)','SP Gravity','Battery Status','Final SG','Synced At'],
-      row:[r.id,r.circuit,r.type,b.sn,r.dt,r.op,r.mode,r.step||'',r.temp||'',b.voltage||'',b.current||'',b.sg||'',b.status||'',r.fsg||'',new Date().toISOString()]
+function buildCircuitSelects() {
+  ['nf-circuit','rd-circuit'].forEach(function(id) {
+    var sel = document.getElementById(id);
+    sel.innerHTML = '<option value="">-- Select --</option>';
+    ['G1','G2','G3'].forEach(function(g) {
+      var og = document.createElement('optgroup');
+      og.label = 'Group '+g.slice(1)+' ('+g+')';
+      CIRCUITS.filter(function(c){ return c.startsWith(g+'-'); }).forEach(function(c) {
+        var o = document.createElement('option');o.value=c;o.textContent=c;og.appendChild(o);
+      });
+      sel.appendChild(og);
     });
   });
+}
 
-  Promise.all(rows).then(function(){
-    r.synced=true;save();
-    addSyncLog(r.circuit+' — '+r.batteries.length+' batteries','Success');
-    msg.innerHTML='&#10003; Synced to Google Sheets successfully!';
-    setTimeout(function(){msg.style.display='none';},4000);
-  }).catch(function(e){
-    addSyncLog(r.circuit,'Failed: '+e.message);
-    msg.innerHTML='&#10006; Sync failed. Data saved locally.';
-    msg.style.background='#fdecea';msg.style.color='#c0392b';
-    setTimeout(function(){msg.style.display='none';},5000);
+function buildCircuitGrids() {
+  ['G1','G2','G3'].forEach(function(g) {
+    var grid = document.getElementById('cg-'+g);
+    if(!grid) return;
+    grid.innerHTML = '';
+    CIRCUITS.filter(function(c){ return c.startsWith(g+'-'); }).forEach(function(c) {
+      var f = formations[c];
+      var state = f?(f.complete?'complete':'running'):'';
+      var lbl = f?(f.complete?'&#10003; Done':'Active'):'Empty';
+      var btn = document.createElement('button');
+      btn.className = 'circuit-btn '+(state||'');
+      btn.id = 'cb-'+c.replace(/-/g,'_');
+      btn.innerHTML = '<strong>'+c+'</strong><br><span style="font-size:9px;opacity:0.75">'+lbl+'</span>';
+      btn.setAttribute('onclick','showDetail("'+c+'")');
+      grid.appendChild(btn);
+    });
   });
 }
 
-function syncAll(){
-  if(!settings.sheetsUrl){alert('Set Google Sheets URL in Settings first.');return;}
-  var un=readings.filter(function(r){return!r.synced;});
-  if(!un.length){alert('All readings already synced to Google Sheets!');return;}
-  if(!confirm('Sync '+un.length+' unsynced readings to Google Sheets?')) return;
-  var done=0;
-  un.forEach(function(r){
-    syncReading(r);
-    done++;
-    if(done===un.length) alert('Sync started for '+un.length+' readings. Check Sync Log.');
-  });
+function buildBattFields() {
+  var g = document.getElementById('nf-batt-grid');
+  g.innerHTML = '';
+  for(var i=1;i<=20;i++) {
+    var d = document.createElement('div');
+    d.innerHTML = '<label>Battery '+i+' S/N</label><input type="text" id="ns'+i+'" placeholder="SN-'+String(i).padStart(3,'0')+'">';
+    g.appendChild(d);
+  }
 }
 
-function addSyncLog(label,status){
-  syncLogs.push({time:new Date().toLocaleString(),label:label,status:status});
-  save();
+function setNow() {
+  var now = new Date();
+  var local = new Date(now - now.getTimezoneOffset()*60000).toISOString().slice(0,16);
+  document.querySelectorAll('input[type="datetime-local"]').forEach(function(el){ el.value=local; });
 }
 
-function testSheets(){
-  var url=document.getElementById('sheets-url').value.trim();
-  if(!url){alert('Enter the URL first.');return;}
-  var res=document.getElementById('testres');
-  res.innerHTML='<span class="spinner"></span>Testing...';
-  res.style.color='#e67e22';res.style.display='inline';
-  fetch(url).then(function(r){return r.json();}).then(function(d){
-    if(d.status==='ok'){
-      res.innerHTML='&#10003; Connected successfully!';res.style.color='#27ae60';
-      settings.sheetsUrl=url;save();updateSheetsStatus();
-    }else{res.innerHTML='&#10006; Failed.';res.style.color='#e74c3c';}
-  }).catch(function(){
-    res.innerHTML='&#10006; Cannot connect. Check URL and redeploy.';res.style.color='#e74c3c';
-  });
-}
-
-function updateSheetsStatus(){
-  var el=document.getElementById('sheets-status');
-  if(!el) return;
-  el.textContent=settings.sheetsUrl?'&#9729; Sheets: Connected':'&#9729; Sheets: Not Connected';
-  el.className='badge '+(settings.sheetsUrl?'badge-complete':'badge-nosync');
+// ─── DASHBOARD ────────────────────────────────────────────────────────────────
+function updateDash() {
+  var fVals = Object.values(formations);
+  var active = fVals.filter(function(f){ return !f.complete; }).length;
+  var done = fVals.filter(function(f){ return f.complete; }).length;
+  setText('m-active', active);
+  setText('m-done', done);
+  setText('m-readings', totalReadings);
+  setText('active-count', active+' Active');
+  setText('complete-count', done+' Complete');
+  setText('rm1', Object.keys(formations).length);
+  setText('rm2', totalReadings);
+  setText('rm3', done);
+  setText('rm4', active);
 }
 
 // ─── CIRCUIT DETAIL ───────────────────────────────────────────────────────────
-function showDetail(c){
-  document.querySelectorAll('.circuit-btn').forEach(function(b){b.classList.remove('active-sel');});
-  var cb=document.getElementById('cb-'+c.replace(/-/g,'_'));
+function showDetail(c) {
+  document.querySelectorAll('.circuit-btn').forEach(function(b){ b.classList.remove('active-sel'); });
+  var cb = document.getElementById('cb-'+c.replace(/-/g,'_'));
   if(cb) cb.classList.add('active-sel');
-  var f=formations[c];
-  var d=document.getElementById('circuit-detail');
-  d.style.display='block';
+  var f = formations[c];
+  var d = document.getElementById('circuit-detail');
+  d.style.display = 'block';
   d.scrollIntoView({behavior:'smooth',block:'nearest'});
-  document.getElementById('cd-title').textContent='Circuit '+c;
-  if(!f){
+  document.getElementById('cd-title').textContent = 'Circuit '+c;
+  if(!f) {
     document.getElementById('cd-badge').className='badge badge-pending';
     document.getElementById('cd-badge').textContent='Empty';
-    ['cd-type','cd-start','cd-end','cd-rc'].forEach(function(id){document.getElementById(id).textContent='--';});
+    ['cd-type','cd-start','cd-end','cd-rc'].forEach(function(id){ document.getElementById(id).textContent='--'; });
     document.getElementById('cd-bats').innerHTML='<span style="color:#888;font-size:12px">No batteries registered</span>';
     return;
   }
   document.getElementById('cd-badge').className='badge '+(f.complete?'badge-complete':'badge-active');
-  document.getElementById('cd-badge').textContent=f.complete?'Complete':'Active';
-  document.getElementById('cd-type').textContent=f.type;
-  document.getElementById('cd-start').textContent=f.start?new Date(f.start).toLocaleString():'--';
-  document.getElementById('cd-end').textContent=f.end?new Date(f.end).toLocaleString():'--';
-  document.getElementById('cd-rc').textContent=(f.readingCount||0)+' readings';
-  var bc=document.getElementById('cd-bats');
-  bc.innerHTML='';
-  (f.batteries||[]).forEach(function(sn){
-    var s=document.createElement('span');
-    s.style.cssText='font-size:11px;padding:4px 10px;border:1px solid #dde1e7;border-radius:20px;background:#f8f9ff;font-weight:500';
-    s.textContent=sn;bc.appendChild(s);
+  document.getElementById('cd-badge').textContent = f.complete?'Complete':'Active';
+  document.getElementById('cd-type').textContent = f.type;
+  document.getElementById('cd-start').textContent = f.start?new Date(f.start).toLocaleString():'--';
+  document.getElementById('cd-end').textContent = f.end?new Date(f.end).toLocaleString():'--';
+  document.getElementById('cd-rc').textContent = (f.readingCount||0)+' readings';
+  var bc = document.getElementById('cd-bats');
+  bc.innerHTML = '';
+  (f.batteries||[]).forEach(function(sn) {
+    var s = document.createElement('span');
+    s.style.cssText = 'font-size:11px;padding:4px 10px;border:1px solid #dde1e7;border-radius:20px;background:#f8f9ff;font-weight:500';
+    s.textContent = sn; bc.appendChild(s);
   });
 }
 
-// ─── DASHBOARD ────────────────────────────────────────────────────────────────
-function updateDash(){
-  var fVals=Object.values(formations);
-  var active=fVals.filter(function(f){return!f.complete;}).length;
-  var done=fVals.filter(function(f){return f.complete;}).length;
-  setText('m-active',active);
-  setText('m-done',done);
-  setText('m-readings',readings.length);
-  setText('active-count',active+' Active');
-  setText('complete-count',done+' Complete');
-  setText('rm1',Object.keys(formations).length);
-  setText('rm2',readings.length);
-  setText('rm3',done);
-  setText('rm4',active);
-}
-
 // ─── COMPLETE LIST ────────────────────────────────────────────────────────────
-function updateCompleteList(){
-  var list=document.getElementById('complete-list');
+function updateCompleteList() {
+  var list = document.getElementById('complete-list');
   if(!list) return;
-  var keys=Object.keys(formations).sort(function(a,b){return CIRCUITS.indexOf(a)-CIRCUITS.indexOf(b);});
-  if(!keys.length){
-    list.innerHTML='<p style="color:#888;font-size:13px;text-align:center;padding:16px">No formations registered yet. Go to New Formation tab to start.</p>';
+  var keys = Object.keys(formations).sort(function(a,b){ return CIRCUITS.indexOf(a)-CIRCUITS.indexOf(b); });
+  if(!keys.length) {
+    list.innerHTML = '<p style="color:#888;font-size:13px;text-align:center;padding:16px">No formations registered yet.</p>';
     return;
   }
-  list.innerHTML='';
-  keys.forEach(function(c){
-    var f=formations[c];
-    var div=document.createElement('div');
-    div.className='complete-item';
-    div.innerHTML=
+  list.innerHTML = '';
+  keys.forEach(function(c) {
+    var f = formations[c];
+    var div = document.createElement('div');
+    div.className = 'complete-item';
+    div.innerHTML =
       '<div class="check-circle '+(f.completeTick?'checked':'')+'\" onclick=\"toggleComplete(\''+c+'\')\">'+
       (f.completeTick?'&#10003;':'')+'</div>'+
       '<div style="flex:1">'+
@@ -391,44 +430,17 @@ function updateCompleteList(){
   });
 }
 
-function toggleComplete(c){
-  if(!formations[c]) return;
-  formations[c].completeTick=!formations[c].completeTick;
-  formations[c].complete=formations[c].completeTick;
-  if(formations[c].complete){
-    formations[c].completedAt=new Date().toISOString();
-    sendNotif(c);
-    postToSheets({
-      sheet:'Completed Formations',
-      headers:['Circuit','Type','Batteries','Start','Expected End','Completed At','Total Readings','Supervisor'],
-      row:[c,formations[c].type,formations[c].batteries.length,formations[c].start||'',formations[c].end||'',formations[c].completedAt,formations[c].readingCount||0,settings.supervisor||'']
-    });
-  }
-  buildCircuitGrids();
-  updateCompleteList();
-  updateDash();
-  updateRptTable();
-  save();
-}
-
-function sendNotif(c){
-  var f=formations[c];
-  var phone=settings.phone||'(not set)';
-  var method=settings.method||'WhatsApp';
-  var msg='FORMATION COMPLETE\nCircuit: '+c+'\nType: '+f.type+'\nBatteries: '+f.batteries.length+'\nCompleted: '+new Date().toLocaleString()+'\nDept: '+(settings.dept||'Battery Formation');
-  notifications.push({time:new Date().toLocaleString(),circuit:c,msg:msg,method:method,phone:phone});
-  save();
-  alert('&#128241; Notification sent via '+method+' to '+phone+':\n\n'+msg);
-}
-
 // ─── REPORTS ──────────────────────────────────────────────────────────────────
-function updateRptTable(){
-  var tbody=document.getElementById('rpt-tbody');
+function updateRptTable() {
+  var tbody = document.getElementById('rpt-tbody');
   if(!tbody) return;
-  tbody.innerHTML='';
-  CIRCUITS.filter(function(c){return formations[c];}).forEach(function(c){
-    var f=formations[c],tr=document.createElement('tr');
-    tr.innerHTML='<td><strong>'+c+'</strong></td><td style="font-size:12px">'+f.type+'</td><td>'+f.batteries.length+'</td>'+
+  tbody.innerHTML = '';
+  CIRCUITS.filter(function(c){ return formations[c]; }).forEach(function(c) {
+    var f = formations[c], tr = document.createElement('tr');
+    tr.innerHTML =
+      '<td><strong>'+c+'</strong></td>'+
+      '<td style="font-size:12px">'+f.type+'</td>'+
+      '<td>'+f.batteries.length+'</td>'+
       '<td style="font-size:12px">'+(f.start?new Date(f.start).toLocaleString():'--')+'</td>'+
       '<td style="font-size:12px">'+(f.end?new Date(f.end).toLocaleString():'--')+'</td>'+
       '<td>'+(f.readingCount||0)+'</td>'+
@@ -438,12 +450,10 @@ function updateRptTable(){
   updateDash();
 }
 
-function showRpt(name,btn){
-  ['summary','log','notif','sync'].forEach(function(n){
-    var el=document.getElementById('rpt-'+n);if(el) el.style.display='none';
-  });
+function showRpt(name, btn) {
+  ['summary','log','notif','sync'].forEach(function(n){ var el=document.getElementById('rpt-'+n);if(el)el.style.display='none'; });
   document.getElementById('rpt-'+name).style.display='block';
-  document.querySelectorAll('.tab-inner-nav button').forEach(function(b){b.classList.remove('active');});
+  document.querySelectorAll('.tab-inner-nav button').forEach(function(b){ b.classList.remove('active'); });
   if(btn) btn.classList.add('active');
   if(name==='log') renderReadingsLog(0);
   if(name==='notif') renderNotifLog();
@@ -451,161 +461,180 @@ function showRpt(name,btn){
   if(name==='summary') updateRptTable();
 }
 
-function renderReadingsLog(page){
-  var tbody=document.getElementById('log-tbody');
+function renderReadingsLog(page) {
+  var tbody = document.getElementById('log-tbody');
   if(!tbody) return;
-  tbody.innerHTML='';
-  var start=page*PAGE_SIZE;
-  var slice=readings.slice().reverse().slice(start,start+PAGE_SIZE);
-  slice.forEach(function(r){
-    var tr=document.createElement('tr');
-    var mc=r.mode==='Charge'?'badge-charge':r.mode==='Discharge'?'badge-discharge':'badge-rest';
-    tr.innerHTML='<td style="font-size:11px">'+(r.dt?new Date(r.dt).toLocaleString():'--')+'</td>'+
-      '<td><strong>'+r.circuit+'</strong></td>'+
-      '<td style="font-size:11px">'+r.type+'</td>'+
-      '<td>'+r.op+'</td>'+
-      '<td><span class="badge '+mc+'">'+r.mode+'</span></td>'+
-      '<td>'+(r.step||'--')+'</td>'+
-      '<td>'+(r.temp||'--')+'°C</td>'+
-      '<td>'+r.batteries.length+' batt.</td>'+
-      '<td>'+(r.fsg||'--')+'</td>'+
-      '<td><span class="badge '+(r.synced?'badge-complete':'badge-nosync')+'" style="font-size:10px">'+(r.synced?'Synced':'Local')+'</span></td>';
-    tbody.appendChild(tr);
+
+  // Show loading
+  tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:20px"><span class="spinner"></span> Loading readings from Google Sheets...</td></tr>';
+
+  sheetsGet('Readings', function(err, rows) {
+    tbody.innerHTML = '';
+    if(err || !rows.length) {
+      tbody.innerHTML = '<tr><td colspan="10" style="color:#888;padding:12px;text-align:center">No readings found.</td></tr>';
+      return;
+    }
+    var total = rows.length;
+    var reversed = rows.slice().reverse();
+    var start = page * PAGE_SIZE;
+    var slice = reversed.slice(start, start + PAGE_SIZE);
+
+    slice.forEach(function(r) {
+      var tr = document.createElement('tr');
+      var mode = r['Mode']||'';
+      var mc = mode==='Charge'?'badge-charge':mode==='Discharge'?'badge-discharge':'badge-rest';
+      tr.innerHTML =
+        '<td style="font-size:11px">'+(r['Date Time']||'--')+'</td>'+
+        '<td><strong>'+(r['Circuit']||'')+'</strong></td>'+
+        '<td style="font-size:11px">'+(r['Battery Type']||'')+'</td>'+
+        '<td>'+(r['Operator']||'')+'</td>'+
+        '<td><span class="badge '+mc+'">'+mode+'</span></td>'+
+        '<td>'+(r['Step No']||'--')+'</td>'+
+        '<td>'+(r['Temperature (C)']||'--')+'°C</td>'+
+        '<td>'+(r['Battery S/N']||'')+'</td>'+
+        '<td>'+(r['Voltage (V)']||'--')+'V / '+(r['Current (A)']||'--')+'A</td>'+
+        '<td>'+(r['Final SG']||'--')+'</td>';
+      tbody.appendChild(tr);
+    });
+
+    // Pagination
+    var pag = document.getElementById('rpt-log-pag');
+    if(!pag){ pag=document.createElement('div');pag.id='rpt-log-pag';pag.style.cssText='margin-top:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap';document.getElementById('rpt-log').appendChild(pag); }
+    pag.innerHTML = '<span style="font-size:12px;color:#888">Showing '+(start+1)+'-'+Math.min(start+PAGE_SIZE,total)+' of '+total+' rows</span>';
+    if(page>0){ var pb=document.createElement('button');pb.className='btn';pb.textContent='&#8592; Previous';pb.onclick=function(){renderReadingsLog(page-1);};pag.appendChild(pb); }
+    if(page<Math.ceil(total/PAGE_SIZE)-1){ var nb=document.createElement('button');nb.className='btn';nb.textContent='Next &#8594;';nb.onclick=function(){renderReadingsLog(page+1);};pag.appendChild(nb); }
   });
-  // Pagination
-  var total=readings.length;
-  var pages=Math.ceil(total/PAGE_SIZE);
-  var pag=document.getElementById('rpt-log-pag');
-  if(!pag){pag=document.createElement('div');pag.id='rpt-log-pag';pag.style.cssText='margin-top:10px;display:flex;gap:8px;align-items:center';document.getElementById('rpt-log').appendChild(pag);}
-  pag.innerHTML='<span style="font-size:12px;color:#888">Showing '+(start+1)+'-'+Math.min(start+PAGE_SIZE,total)+' of '+total+' readings</span>';
-  if(page>0){var pb=document.createElement('button');pb.className='btn';pb.textContent='&#8592; Previous';pb.onclick=function(){renderReadingsLog(page-1);};pag.appendChild(pb);}
-  if(page<pages-1){var nb=document.createElement('button');nb.className='btn';nb.textContent='Next &#8594;';nb.onclick=function(){renderReadingsLog(page+1);};pag.appendChild(nb);}
 }
 
-function renderNotifLog(){
-  var el=document.getElementById('notif-log');
-  el.innerHTML=notifications.length?
+function renderNotifLog() {
+  var el = document.getElementById('notif-log');
+  el.innerHTML = notifications.length ?
     notifications.slice().reverse().map(function(n){
-      return'<div class="notif-item"><div style="font-size:11px;color:#888">'+n.time+' — '+n.method+' to '+n.phone+'</div><div style="font-size:13px;white-space:pre-line;margin-top:4px">'+n.msg+'</div></div>';
-    }).join(''):
+      return '<div class="notif-item"><div style="font-size:11px;color:#888">'+n.time+' — '+n.method+' to '+n.phone+'</div><div style="font-size:13px;white-space:pre-line;margin-top:4px">'+n.msg+'</div></div>';
+    }).join('') :
     '<p style="color:#888;font-size:13px;padding:10px">No notifications yet.</p>';
 }
 
-function renderSyncLog(){
-  var el=document.getElementById('sync-log');
-  el.innerHTML=syncLogs.length?
+function renderSyncLog() {
+  var el = document.getElementById('sync-log');
+  el.innerHTML = syncLogs.length ?
     syncLogs.slice().reverse().map(function(s){
-      var color=s.status.startsWith('Success')?'#27ae60':'#e74c3c';
-      return'<div style="padding:8px 12px;border-left:4px solid '+color+';background:#f8f9ff;border-radius:0 8px 8px 0;margin-bottom:6px;font-size:12px">'+
-        '<span style="color:#888">'+s.time+'</span> &mdash; '+s.label+' &mdash; <strong style="color:'+color+'">'+s.status+'</strong></div>';
-    }).join(''):
-    '<p style="color:#888;font-size:13px;padding:10px">No sync attempts yet.</p>';
+      var color = s.status.startsWith('Success')?'#27ae60':'#e74c3c';
+      return '<div style="padding:8px 12px;border-left:4px solid '+color+';background:#f8f9ff;border-radius:0 8px 8px 0;margin-bottom:6px;font-size:12px"><span style="color:#888">'+s.time+'</span> &mdash; '+s.label+' &mdash; <strong style="color:'+color+'">'+s.status+'</strong></div>';
+    }).join('') :
+    '<p style="color:#888;font-size:13px;padding:10px">No sync log yet.</p>';
+}
+
+function addSyncLog(label, status) {
+  syncLogs.push({time:new Date().toLocaleString(),label:label,status:status});
+  if(syncLogs.length>100) syncLogs.shift();
 }
 
 // ─── EXPORT CSV ───────────────────────────────────────────────────────────────
-function exportSummary(){
-  var csv='Circuit,Type,Batteries,Start,Expected End,Readings,Status\n';
-  CIRCUITS.filter(function(c){return formations[c];}).forEach(function(c){
-    var f=formations[c];
-    csv+=c+','+f.type+','+f.batteries.length+','+(f.start||'')+','+(f.end||'')+','+(f.readingCount||0)+','+(f.complete?'Complete':'Active')+'\n';
+function exportSummary() {
+  var csv = 'Circuit,Type,Batteries,Start,Expected End,Readings,Status\n';
+  CIRCUITS.filter(function(c){ return formations[c]; }).forEach(function(c) {
+    var f = formations[c];
+    csv += c+','+f.type+','+f.batteries.length+','+(f.start||'')+','+(f.end||'')+','+(f.readingCount||0)+','+(f.complete?'Complete':'Active')+'\n';
   });
-  dlCSV(csv,'formation_summary_'+today()+'.csv');
+  dlCSV(csv, 'formation_summary_'+today()+'.csv');
 }
 
-function exportReadings(){
-  var csv='ID,Circuit,Type,Battery S/N,DateTime,Operator,Mode,Step,Temperature,Voltage,Current,SP Gravity,Status,Final SG,Synced\n';
-  readings.forEach(function(r){
-    r.batteries.forEach(function(b){
-      csv+=r.id+','+r.circuit+','+r.type+','+b.sn+','+(r.dt||'')+','+(r.op||'')+','+r.mode+','+(r.step||'')+','+(r.temp||'')+','+(b.voltage||'')+','+(b.current||'')+','+(b.sg||'')+','+(b.status||'')+','+(r.fsg||'')+',' +(r.synced?'Yes':'No')+'\n';
-    });
+function exportReadingsFromSheets() {
+  var btn = document.getElementById('btn-export-readings');
+  if(btn){ btn.textContent='Downloading...'; btn.disabled=true; }
+  sheetsGet('Readings', function(err, rows) {
+    if(btn){ btn.textContent='&#11015; Readings CSV'; btn.disabled=false; }
+    if(err||!rows.length){ alert('No readings found in Google Sheets.'); return; }
+    var headers = Object.keys(rows[0]);
+    var csv = headers.join(',')+'\n';
+    rows.forEach(function(r){ csv += headers.map(function(h){ return '"'+(r[h]||'')+'"'; }).join(',')+'\n'; });
+    dlCSV(csv, 'formation_readings_'+today()+'.csv');
   });
-  dlCSV(csv,'formation_readings_'+today()+'.csv');
 }
 
-function dlCSV(csv,name){
-  var a=document.createElement('a');
-  a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8;'}));
-  a.download=name;a.style.display='none';
-  document.body.appendChild(a);a.click();document.body.removeChild(a);
+function dlCSV(csv, name) {
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8;'}));
+  a.download = name; a.style.display='none';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
 }
 
-function today(){return new Date().toISOString().slice(0,10);}
+function today(){ return new Date().toISOString().slice(0,10); }
+
+// ─── DEMO & CLEAR ─────────────────────────────────────────────────────────────
+function demoFill() {
+  var c = val('rd-circuit');
+  if(!c||!formations[c]){ alert('Select a circuit first.'); return; }
+  formations[c].batteries.forEach(function(_,i) {
+    var v=document.getElementById('rv'+i), cr=document.getElementById('rc'+i), g=document.getElementById('rg'+i);
+    if(v) v.value=(12.4+Math.random()*0.4).toFixed(2);
+    if(cr) cr.value=(4.8+Math.random()*0.5).toFixed(2);
+    if(g) g.value=(1.240+Math.random()*0.04).toFixed(3);
+  });
+  setVal('rd-op','Operator A'); setVal('rd-temp','28'); setVal('rd-step','1'); setVal('rd-fsg','1.265');
+}
+
+function clearForm() {
+  document.querySelectorAll('[id^="rv"],[id^="rc"],[id^="rg"]').forEach(function(el){ if(/^r[vcg]\d/.test(el.id)) el.value=''; });
+  setVal('rd-temp',''); setVal('rd-step',''); setVal('rd-fsg','');
+}
 
 // ─── SETTINGS ─────────────────────────────────────────────────────────────────
-function saveSettings(){
-  settings.phone=val('notif-phone');
-  settings.method=val('notif-method');
-  settings.supervisor=val('sup-name');
-  settings.dept=val('dept-name');
-  var u=val('sheets-url');
-  if(u) settings.sheetsUrl=u;
-  save();updateSheetsStatus();
-  show('setsaved',2500);
+function saveSettings() {
+  settings.phone = val('notif-phone');
+  settings.method = val('notif-method');
+  settings.supervisor = val('sup-name');
+  settings.dept = val('dept-name');
+  localStorage.setItem('qab_settings', JSON.stringify(settings));
+  show('setsaved', 2500);
 }
 
-function loadSettingsUI(){
-  setVal('notif-phone',settings.phone||'');
-  setVal('notif-method',settings.method||'WhatsApp');
-  setVal('sup-name',settings.supervisor||'');
-  setVal('dept-name',settings.dept||'Battery Formation Dept');
-  setVal('sheets-url',settings.sheetsUrl||'');
+function loadSettingsLocal() {
+  try{ var s=localStorage.getItem('qab_settings'); if(s) settings=JSON.parse(s); }catch(e){}
 }
 
-function resetData(){
-  formations={};readings=[];notifications=[];syncLogs=[];
-  var keys=[];for(var i=0;i<localStorage.length;i++){var k=localStorage.key(i);if(k&&k.startsWith('qab_'))keys.push(k);}
-  keys.forEach(function(k){localStorage.removeItem(k);});
-  buildCircuitGrids();updateDash();updateCompleteList();updateRptTable();
-  document.getElementById('rd-rows').innerHTML='';
-  document.getElementById('rd-hint').style.display='block';
-  document.getElementById('circuit-detail').style.display='none';
-  alert('All data reset.');
+function loadSettingsUI() {
+  setVal('notif-phone', settings.phone||'');
+  setVal('notif-method', settings.method||'WhatsApp');
+  setVal('sup-name', settings.supervisor||'');
+  setVal('dept-name', settings.dept||'Battery Formation Dept');
+  setVal('sheets-url', SHEETS_URL);
+}
+
+function updateSheetsStatus(connected) {
+  var el = document.getElementById('sheets-status');
+  if(!el) return;
+  el.textContent = connected ? '&#9729; Sheets: Connected' : '&#9729; Sheets: Not Connected';
+  el.className = 'badge '+(connected?'badge-complete':'badge-nosync');
+}
+
+function showError(msg) {
+  var el = document.getElementById('global-error');
+  if(el){ el.textContent=msg; el.style.display='block'; }
 }
 
 // ─── VOICE ENTRY ──────────────────────────────────────────────────────────────
-function toggleVoice(t){
-  if(!('webkitSpeechRecognition' in window||'SpeechRecognition' in window)){
-    alert('Voice entry requires Google Chrome browser.');return;
-  }
-  if(vRec&&vTarget===t){
-    vRec.stop();vRec=null;vTarget=null;
-    document.getElementById('voice-'+t).classList.remove('listening');
-    document.getElementById('voice-'+t+'-status').textContent='Voice stopped.';return;
-  }
+function toggleVoice(t) {
+  if(!('webkitSpeechRecognition' in window||'SpeechRecognition' in window)){ alert('Voice entry requires Google Chrome.'); return; }
+  if(vRec&&vTarget===t){ vRec.stop();vRec=null;vTarget=null;document.getElementById('voice-'+t).classList.remove('listening');document.getElementById('voice-'+t+'-status').textContent='Voice stopped.';return; }
   var SR=window.SpeechRecognition||window.webkitSpeechRecognition;
-  vRec=new SR();vTarget=t;
-  vRec.continuous=true;vRec.interimResults=false;vRec.lang='en-US';
-  vRec.onresult=function(e){
-    var txt=e.results[e.results.length-1][0].transcript.toLowerCase().trim();
-    document.getElementById('voice-'+t+'-status').textContent='Heard: "'+txt+'"';
-    parseVoice(txt,t);
-  };
-  vRec.onerror=function(){
-    document.getElementById('voice-'+t+'-status').textContent='Error. Try again.';
-    document.getElementById('voice-'+t).classList.remove('listening');
-    vRec=null;vTarget=null;
-  };
+  vRec=new SR(); vTarget=t; vRec.continuous=true; vRec.interimResults=false; vRec.lang='en-US';
+  vRec.onresult=function(e){ var txt=e.results[e.results.length-1][0].transcript.toLowerCase().trim(); document.getElementById('voice-'+t+'-status').textContent='Heard: "'+txt+'"'; parseVoice(txt,t); };
+  vRec.onerror=function(){ document.getElementById('voice-'+t+'-status').textContent='Error. Try again.'; document.getElementById('voice-'+t).classList.remove('listening'); vRec=null;vTarget=null; };
   vRec.start();
   document.getElementById('voice-'+t).classList.add('listening');
   document.getElementById('voice-'+t+'-status').textContent='Listening... speak now';
 }
 
-function parseVoice(txt,t){
+function parseVoice(txt, t) {
   var cm=txt.match(/circuit\s*(g\d+-\d+)/i)||txt.match(/(g\d+-\d+)/i);
-  var vm=txt.match(/voltage\s*([\d.]+)/);
-  var im=txt.match(/current\s*([\d.]+)/);
-  var tm=txt.match(/temperature\s*([\d.]+)/);
-  var sm=txt.match(/step\s*(\d+)/);
+  var vm=txt.match(/voltage\s*([\d.]+)/), im=txt.match(/current\s*([\d.]+)/);
+  var tm=txt.match(/temperature\s*([\d.]+)/), sm=txt.match(/step\s*(\d+)/);
   var opM=txt.match(/operator\s+([a-z]+)/);
-  var chargeM=txt.match(/\b(charge|charging)\b/);
-  var disM=txt.match(/\b(discharge|discharging)\b/);
-  var restM=txt.match(/\brest\b/);
-  if(t==='rd'){
-    if(cm){
-      var cv=cm[1].toUpperCase();
-      var s=document.getElementById('rd-circuit');
-      for(var i=0;i<s.options.length;i++){if(s.options[i].value===cv){s.value=cv;loadBatteries();break;}}
-    }
+  var chargeM=txt.match(/\b(charge|charging)\b/), disM=txt.match(/\b(discharge|discharging)\b/), restM=txt.match(/\brest\b/);
+  if(t==='rd') {
+    if(cm){ var cv=cm[1].toUpperCase(); var s=document.getElementById('rd-circuit'); for(var i=0;i<s.options.length;i++){if(s.options[i].value===cv){s.value=cv;loadBatteries();break;}} }
     if(vm) document.querySelectorAll('[id^="rv"]').forEach(function(el){if(/^rv\d/.test(el.id))el.value=vm[1];});
     if(im) document.querySelectorAll('[id^="rc"]').forEach(function(el){if(/^rc\d/.test(el.id))el.value=im[1];});
     if(tm) setVal('rd-temp',tm[1]);
@@ -617,44 +646,22 @@ function parseVoice(txt,t){
   }
 }
 
-// ─── DEMO & CLEAR ─────────────────────────────────────────────────────────────
-function demoFill(){
-  var c=document.getElementById('rd-circuit').value;
-  if(!c||!formations[c]){alert('Select a circuit first.');return;}
-  formations[c].batteries.forEach(function(_,i){
-    var v=document.getElementById('rv'+i);
-    var cr=document.getElementById('rc'+i);
-    var g=document.getElementById('rg'+i);
-    if(v) v.value=(12.4+Math.random()*0.4).toFixed(2);
-    if(cr) cr.value=(4.8+Math.random()*0.5).toFixed(2);
-    if(g) g.value=(1.240+Math.random()*0.04).toFixed(3);
-  });
-  setVal('rd-op','Operator A');setVal('rd-temp','28');setVal('rd-step','1');setVal('rd-fsg','1.265');
-}
-
-function clearForm(){
-  document.querySelectorAll('[id^="rv"],[id^="rc"],[id^="rg"]').forEach(function(el){
-    if(/^r[vcg]\d/.test(el.id)) el.value='';
-  });
-  setVal('rd-temp','');setVal('rd-step','');setVal('rd-fsg','');
-}
-
 // ─── TAB NAVIGATION ───────────────────────────────────────────────────────────
-function showTab(name,btn){
-  document.querySelectorAll('.tab').forEach(function(t){t.classList.remove('active');});
-  document.querySelectorAll('.nav button').forEach(function(b){b.classList.remove('active');});
+function showTab(name, btn) {
+  document.querySelectorAll('.tab').forEach(function(t){ t.classList.remove('active'); });
+  document.querySelectorAll('.nav button').forEach(function(b){ b.classList.remove('active'); });
   document.getElementById('tab-'+name).classList.add('active');
   if(btn) btn.classList.add('active');
   if(name==='completed') updateCompleteList();
-  if(name==='reports'){updateRptTable();updateDash();}
-  if(name==='dashboard'){buildCircuitGrids();updateDash();}
+  if(name==='reports'){ updateRptTable(); updateDash(); }
+  if(name==='dashboard'){ buildCircuitGrids(); updateDash(); }
 }
 
 // ─── HELPERS ──────────────────────────────────────────────────────────────────
-function val(id){var el=document.getElementById(id);return el?el.value:'';}
-function setVal(id,v){var el=document.getElementById(id);if(el)el.value=v;}
-function setText(id,v){var el=document.getElementById(id);if(el)el.textContent=v;}
-function show(id,ms){var el=document.getElementById(id);if(!el)return;el.style.display='block';if(ms)setTimeout(function(){el.style.display='none';},ms);}
+function val(id){ var el=document.getElementById(id); return el?el.value:''; }
+function setVal(id,v){ var el=document.getElementById(id); if(el) el.value=v; }
+function setText(id,v){ var el=document.getElementById(id); if(el) el.textContent=v; }
+function show(id,ms){ var el=document.getElementById(id); if(!el)return; el.style.display='block'; if(ms) setTimeout(function(){ el.style.display='none'; },ms); }
+function setBtnLoading(id,loading){ var el=document.getElementById(id); if(!el)return; el.disabled=loading; el.style.opacity=loading?'0.6':'1'; }
 
-// ─── START ────────────────────────────────────────────────────────────────────
 init();
