@@ -7,13 +7,6 @@
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<div class="loading-overlay" id="loading-overlay">
-  <div class="loading-logo">&#9889;</div>
-  <div class="loading-title">Battery Formation System</div>
-  <div class="loading-sub">Quality Asian Battery</div>
-  <div class="loading-bar"><div class="loading-fill"></div></div>
-  <div id="loading-msg">Connecting to Google Sheets...</div>
-</div>
 
 <div class="header">
   <div>
@@ -21,7 +14,7 @@
     <div class="header-sub">Quality Asian Battery &nbsp;|&nbsp; <span id="clock"></span></div>
   </div>
   <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-    <span id="sheets-status" class="badge badge-nosync">&#9729; Connecting...</span>
+    <span id="sheets-status" class="badge badge-nosync">&#9729; Sheets: Not Connected</span>
     <span class="badge badge-active" id="active-count">0 Active</span>
     <span class="badge badge-complete" id="complete-count">0 Complete</span>
   </div>
@@ -36,10 +29,9 @@
   <button onclick="showTab('settings',this)">&#9881; Settings</button>
 </div>
 
-<div id="global-error" class="global-error"></div>
-
 <div class="content">
 
+<!-- DASHBOARD -->
 <div id="tab-dashboard" class="tab active">
   <div class="metrics">
     <div class="metric"><div class="metric-label">Total Circuits</div><div class="metric-value" style="color:#0f3460">28</div></div>
@@ -69,9 +61,10 @@
   </div>
 </div>
 
+<!-- NEW FORMATION -->
 <div id="tab-new-formation" class="tab">
   <div class="section-title">Register New Formation</div>
-  <div id="nf-ok" class="success-msg">&#10003; Formation registered and saved to Google Sheets!</div>
+  <div id="nf-ok" class="success-msg">&#10003; Formation registered successfully!</div>
   <div id="nf-err" class="error-msg"></div>
   <div class="card">
     <div class="grid3" style="margin-bottom:12px">
@@ -86,13 +79,14 @@
     <div class="card-title">Battery Serial Numbers (up to 20)</div>
     <div id="nf-batt-grid" style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:16px"></div>
     <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-      <button class="btn btn-primary" id="btn-register" onclick="registerFormation()">&#10004; Register Formation</button>
+      <button class="btn btn-primary" onclick="registerFormation()">&#10004; Register Formation</button>
       <button class="btn btn-voice" id="voice-nf" onclick="toggleVoice('nf')">&#127908;</button>
       <span style="font-size:12px;color:#888;font-style:italic" id="voice-nf-status">Press mic for voice entry</span>
     </div>
   </div>
 </div>
 
+<!-- ADD READING -->
 <div id="tab-readings" class="tab">
   <div class="section-title">Add Reading</div>
   <div class="voice-bar">
@@ -100,7 +94,7 @@
     <span style="font-size:13px;color:#666;flex:1" id="voice-rd-status">Press mic to start voice entry</span>
     <span style="font-size:11px;color:#888;font-style:italic">Say: "Circuit G1-3, voltage 12.6, current 5.2, temperature 28"</span>
   </div>
-  <div id="rd-ok" class="success-msg">&#10003; Reading saved to Google Sheets!</div>
+  <div id="rd-ok" class="success-msg">&#10003; Reading saved!</div>
   <div id="rd-sync-msg" class="success-msg"></div>
   <div class="card">
     <div class="grid3" style="margin-bottom:12px">
@@ -122,21 +116,24 @@
       </table>
     </div>
     <div style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap">
-      <button class="btn btn-sheets" id="btn-save-reading" onclick="saveReading()">&#9729; Save to Google Sheets</button>
+      <button class="btn btn-primary" onclick="saveReading(false)">&#128190; Save Local</button>
+      <button class="btn btn-sheets" onclick="saveReading(true)">&#9729; Save + Sync to Sheets</button>
       <button class="btn" onclick="demoFill()">&#127922; Demo Fill</button>
       <button class="btn" onclick="clearForm()">&#10006; Clear</button>
     </div>
   </div>
 </div>
 
+<!-- COMPLETED -->
 <div id="tab-completed" class="tab">
   <div class="section-title">Formation Completion Tracker</div>
   <div class="card" style="background:#f0fff4;border-color:#a9dfbf">
-    <p style="font-size:13px;color:#555;margin-bottom:14px">&#128241; Tick when formation is complete — notification sent + saved to Google Sheets automatically.</p>
+    <p style="font-size:13px;color:#555;margin-bottom:14px">&#128241; Tick when formation is complete — WhatsApp/SMS notification will be sent automatically.</p>
     <div id="complete-list"></div>
   </div>
 </div>
 
+<!-- REPORTS -->
 <div id="tab-reports" class="tab">
   <div class="section-title">Reports &amp; Analysis</div>
   <div class="tab-inner-nav">
@@ -148,7 +145,7 @@
   <div id="rpt-summary">
     <div class="metrics">
       <div class="metric"><div class="metric-label">Registered</div><div class="metric-value" style="color:#0f3460" id="rm1">0</div></div>
-      <div class="metric"><div class="metric-label">Total Readings</div><div class="metric-value" style="color:#8e44ad" id="rm2">0</div></div>
+      <div class="metric"><div class="metric-label">Readings</div><div class="metric-value" style="color:#8e44ad" id="rm2">0</div></div>
       <div class="metric"><div class="metric-label">Completed</div><div class="metric-value" style="color:#27ae60" id="rm3">0</div></div>
       <div class="metric"><div class="metric-label">Active</div><div class="metric-value" style="color:#e67e22" id="rm4">0</div></div>
     </div>
@@ -163,15 +160,16 @@
     </div>
     <div style="display:flex;gap:10px;flex-wrap:wrap">
       <button class="btn btn-success" onclick="exportSummary()">&#11015; Summary CSV</button>
-      <button class="btn btn-success" id="btn-export-readings" onclick="exportReadingsFromSheets()">&#11015; Readings CSV</button>
+      <button class="btn btn-success" onclick="exportReadings()">&#11015; Readings CSV</button>
+      <button class="btn btn-sheets" onclick="syncAll()">&#9729; Sync All Unsynced</button>
     </div>
   </div>
   <div id="rpt-log" style="display:none">
     <div class="card">
-      <div class="card-title">All Readings — Live from Google Sheets</div>
+      <div class="card-title">All Readings</div>
       <div style="overflow-x:auto">
         <table class="battery-table">
-          <thead><tr><th>Time</th><th>Circuit</th><th>Type</th><th>Operator</th><th>Mode</th><th>Step</th><th>Temp</th><th>Battery S/N</th><th>V / A</th><th>Final SG</th></tr></thead>
+          <thead><tr><th>Time</th><th>Circuit</th><th>Type</th><th>Operator</th><th>Mode</th><th>Step</th><th>Temp</th><th>Batteries</th><th>Final SG</th><th>Synced</th></tr></thead>
           <tbody id="log-tbody"></tbody>
         </table>
       </div>
@@ -181,13 +179,22 @@
   <div id="rpt-sync" style="display:none"><div class="card"><div class="card-title">Sync Log</div><div id="sync-log"></div></div></div>
 </div>
 
+<!-- SETTINGS -->
 <div id="tab-settings" class="tab">
   <div class="section-title">Settings</div>
   <div class="card" style="border-color:#a9dfbf;background:#f0fff4">
-    <div class="card-title">&#9729; Google Sheets — Pre-Configured</div>
-    <p style="font-size:13px;color:#555;margin-bottom:10px">All data saves directly to Google Sheets. Nothing stored in browser. No slowdown ever.</p>
-    <label>Apps Script URL</label>
-    <input type="text" id="sheets-url" readonly style="background:#f0f2f5;color:#666;font-size:11px;margin-top:5px">
+    <div class="card-title">&#9729; Google Sheets Connection</div>
+    <p style="font-size:13px;color:#555;margin-bottom:12px">Your Apps Script URL is pre-configured. Click Test to verify.</p>
+    <div style="margin-bottom:12px">
+      <label>Apps Script Web App URL</label>
+      <input type="text" id="sheets-url" value="https://script.google.com/macros/s/AKfycbwLztGVlMV6Z5MTYuzwBfVNPLIYS84v0LnbiFd-kAPUdvCePHGelzWQ2tbSuZ92cEDjfg/exec">
+    </div>
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
+      <button class="btn btn-sheets" onclick="testSheets()">&#128267; Test Connection</button>
+      <button class="btn btn-primary" onclick="saveSettings()">&#10004; Save Settings</button>
+      <span id="setsaved" style="font-size:12px;color:#27ae60;display:none;font-weight:500">&#10003; Saved!</span>
+      <span id="testres" style="font-size:12px;display:none"></span>
+    </div>
   </div>
   <div class="card">
     <div class="card-title">&#128241; Notification Settings</div>
@@ -199,25 +206,32 @@
       <div><label>Supervisor Name</label><input type="text" id="sup-name" placeholder="Supervisor"></div>
       <div><label>Department</label><input type="text" id="dept-name" placeholder="Battery Formation Dept"></div>
     </div>
-    <div style="display:flex;gap:10px;align-items:center">
-      <button class="btn btn-primary" onclick="saveSettings()">&#10004; Save Settings</button>
-      <span id="setsaved" style="font-size:12px;color:#27ae60;display:none;font-weight:500">&#10003; Saved!</span>
+    <button class="btn btn-primary" onclick="saveSettings()">&#10004; Save Settings</button>
+  </div>
+  <div class="card">
+    <div class="card-title">&#128190; Data Management</div>
+    <p style="font-size:13px;color:#666;margin-bottom:12px">Data saves in browser. Export regularly to Google Sheets for backup.</p>
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <button class="btn btn-success" onclick="exportSummary()">&#11015; Summary CSV</button>
+      <button class="btn btn-success" onclick="exportReadings()">&#11015; Readings CSV</button>
+      <button class="btn btn-danger" onclick="if(confirm('Reset ALL data?'))resetData()">&#128465; Reset All Data</button>
     </div>
   </div>
   <div class="card">
     <div class="card-title">&#127775; About</div>
-    <div style="font-size:13px;color:#666;line-height:2.2">
-      <strong>Battery Formation System v4.0</strong><br>
-      &#127968; GitHub Pages — everyone always on latest version<br>
-      &#9729; Google Sheets database — unlimited data, never slow<br>
+    <div style="font-size:13px;color:#666;line-height:2">
+      <strong>Battery Formation System v3.0</strong><br>
+      &#127968; Hosted on GitHub Pages — always up to date<br>
+      &#9729; Google Sheets integration — unlimited data<br>
       &#128268; 28 circuits (G1-1 to G3-8), 20 batteries each<br>
-      &#127908; Voice entry (Chrome), &#128241; WhatsApp/SMS notification<br>
-      &#11015; CSV export, &#128203; 85+ battery types
+      &#127908; Voice entry (Chrome required)<br>
+      &#128241; WhatsApp/SMS notification on completion<br>
+      &#11015; CSV export anytime
     </div>
   </div>
 </div>
 
-</div>
+</div><!-- end content -->
 <script src="app.js"></script>
 </body>
 </html>
