@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Battery Formation System | Quality Asian Battery</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="header">
+  <div>
+    <div class="header-title">&#9889; Battery Formation System</div>
+    <div class="header-sub">Quality Asian Battery &nbsp;|&nbsp; <span id="clock"></span></div>
+  </div>
+  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+    <span id="sheets-status" class="badge badge-nosync">&#9729; Sheets: Not Connected</span>
+    <span class="badge badge-active" id="active-count">0 Active</span>
+    <span class="badge badge-complete" id="complete-count">0 Complete</span>
+  </div>
+</div>
+
+<div class="nav">
+  <button class="active" onclick="showTab('dashboard',this)">&#127968; Dashboard</button>
+  <button onclick="showTab('new-formation',this)">&#43; New Formation</button>
+  <button onclick="showTab('readings',this)">&#128203; Add Reading</button>
+  <button onclick="showTab('completed',this)">&#9989; Completed</button>
+  <button onclick="showTab('reports',this)">&#128202; Reports</button>
+  <button onclick="showTab('settings',this)">&#9881; Settings</button>
+</div>
+
+<div class="content">
+
+<!-- DASHBOARD -->
+<div id="tab-dashboard" class="tab active">
+  <div class="metrics">
+    <div class="metric"><div class="metric-label">Total Circuits</div><div class="metric-value" style="color:#0f3460">28</div></div>
+    <div class="metric"><div class="metric-label">Active</div><div class="metric-value" style="color:#e67e22" id="m-active">0</div></div>
+    <div class="metric"><div class="metric-label">Completed</div><div class="metric-value" style="color:#27ae60" id="m-done">0</div></div>
+    <div class="metric"><div class="metric-label">Total Readings</div><div class="metric-value" style="color:#8e44ad" id="m-readings">0</div></div>
+  </div>
+  <div class="section-title">Circuit Overview — Click to view details</div>
+  <div class="grp-label">Group 1 (G1)</div><div class="circuit-grid" id="cg-G1"></div>
+  <div class="grp-label">Group 2 (G2)</div><div class="circuit-grid" id="cg-G2"></div>
+  <div class="grp-label">Group 3 (G3)</div><div class="circuit-grid" id="cg-G3"></div>
+  <div id="circuit-detail" style="display:none;margin-top:12px">
+    <div class="card">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+        <div style="font-size:16px;font-weight:700" id="cd-title"></div>
+        <span class="badge" id="cd-badge"></span>
+      </div>
+      <div class="grid4" style="margin-bottom:12px">
+        <div><label>Battery Type</label><div id="cd-type" style="font-weight:500;font-size:13px">--</div></div>
+        <div><label>Start Time</label><div id="cd-start" style="font-weight:500;font-size:13px">--</div></div>
+        <div><label>Expected End</label><div id="cd-end" style="font-weight:500;font-size:13px">--</div></div>
+        <div><label>Readings</label><div id="cd-rc" style="font-weight:500;font-size:13px">--</div></div>
+      </div>
+      <label>Batteries in this circuit</label>
+      <div id="cd-bats" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px"></div>
+    </div>
+  </div>
+</div>
+
+<!-- NEW FORMATION -->
+<div id="tab-new-formation" class="tab">
+  <div class="section-title">Register New Formation</div>
+  <div id="nf-ok" class="success-msg">&#10003; Formation registered successfully!</div>
+  <div id="nf-err" class="error-msg"></div>
+  <div class="card">
+    <div class="grid3" style="margin-bottom:12px">
+      <div><label>Circuit No.</label><select id="nf-circuit"><option value="">-- Select --</option></select></div>
+      <div><label>Battery Type</label><select id="nf-type"></select></div>
+      <div><label>Initial SP Gravity</label><input type="number" id="nf-sg" placeholder="1.240" step="0.001"></div>
+    </div>
+    <div class="grid2" style="margin-bottom:14px">
+      <div><label>Formation Start Date &amp; Time</label><input type="datetime-local" id="nf-start"></div>
+      <div><label>Expected End Date &amp; Time</label><input type="datetime-local" id="nf-end"></div>
+    </div>
+    <div class="card-title">Battery Serial Numbers (up to 20)</div>
+    <div id="nf-batt-grid" style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:16px"></div>
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <button class="btn btn-primary" onclick="registerFormation()">&#10004; Register Formation</button>
+      <button class="btn btn-voice" id="voice-nf" onclick="toggleVoice('nf')">&#127908;</button>
+      <span style="font-size:12px;color:#888;font-style:italic" id="voice-nf-status">Press mic for voice entry</span>
+    </div>
+  </div>
+</div>
+
+<!-- ADD READING -->
+<div id="tab-readings" class="tab">
+  <div class="section-title">Add Reading</div>
+  <div class="voice-bar">
+    <button class="btn btn-voice" id="voice-rd" onclick="toggleVoice('rd')">&#127908;</button>
+    <span style="font-size:13px;color:#666;flex:1" id="voice-rd-status">Press mic to start voice entry</span>
+    <span style="font-size:11px;color:#888;font-style:italic">Say: "Circuit G1-3, voltage 12.6, current 5.2, temperature 28"</span>
+  </div>
+  <div id="rd-ok" class="success-msg">&#10003; Reading saved!</div>
+  <div id="rd-sync-msg" class="success-msg"></div>
+  <div class="card">
+    <div class="grid3" style="margin-bottom:12px">
+      <div><label>Circuit No.</label><select id="rd-circuit" onchange="loadBatteries()"><option value="">-- Select --</option></select></div>
+      <div><label>Reading Date &amp; Time</label><input type="datetime-local" id="rd-dt"></div>
+      <div><label>Operator Name</label><input type="text" id="rd-op" placeholder="Operator name"></div>
+    </div>
+    <div class="grid4" style="margin-bottom:14px">
+      <div><label>Temperature (°C)</label><input type="number" id="rd-temp" placeholder="28"></div>
+      <div><label>Step No.</label><input type="number" id="rd-step" placeholder="1"></div>
+      <div><label>Mode</label><select id="rd-mode"><option>Charge</option><option>Discharge</option><option>Rest</option></select></div>
+      <div><label>Final SP Gravity</label><input type="number" id="rd-fsg" placeholder="1.280" step="0.001"></div>
+    </div>
+    <div id="rd-hint" class="info-bar">&#9888; Select an active circuit above to load battery list.</div>
+    <div style="overflow-x:auto">
+      <table class="battery-table">
+        <thead><tr><th>#</th><th>Serial No.</th><th>Voltage (V)</th><th>Current (A)</th><th>SP Gravity</th><th>Status</th></tr></thead>
+        <tbody id="rd-rows"></tbody>
+      </table>
+    </div>
+    <div style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap">
+      <button class="btn btn-primary" onclick="saveReading(false)">&#128190; Save Local</button>
+      <button class="btn btn-sheets" onclick="saveReading(true)">&#9729; Save + Sync to Sheets</button>
+      <button class="btn" onclick="demoFill()">&#127922; Demo Fill</button>
+      <button class="btn" onclick="clearForm()">&#10006; Clear</button>
+    </div>
+  </div>
+</div>
+
+<!-- COMPLETED -->
+<div id="tab-completed" class="tab">
+  <div class="section-title">Formation Completion Tracker</div>
+  <div class="card" style="background:#f0fff4;border-color:#a9dfbf">
+    <p style="font-size:13px;color:#555;margin-bottom:14px">&#128241; Tick when formation is complete — WhatsApp/SMS notification will be sent automatically.</p>
+    <div id="complete-list"></div>
+  </div>
+</div>
+
+<!-- REPORTS -->
+<div id="tab-reports" class="tab">
+  <div class="section-title">Reports &amp; Analysis</div>
+  <div class="tab-inner-nav">
+    <button class="active" onclick="showRpt('summary',this)">&#128202; Summary</button>
+    <button onclick="showRpt('log',this)">&#128203; Readings Log</button>
+    <button onclick="showRpt('notif',this)">&#128241; Notifications</button>
+    <button onclick="showRpt('sync',this)">&#9729; Sync Log</button>
+  </div>
+  <div id="rpt-summary">
+    <div class="metrics">
+      <div class="metric"><div class="metric-label">Registered</div><div class="metric-value" style="color:#0f3460" id="rm1">0</div></div>
+      <div class="metric"><div class="metric-label">Readings</div><div class="metric-value" style="color:#8e44ad" id="rm2">0</div></div>
+      <div class="metric"><div class="metric-label">Completed</div><div class="metric-value" style="color:#27ae60" id="rm3">0</div></div>
+      <div class="metric"><div class="metric-label">Active</div><div class="metric-value" style="color:#e67e22" id="rm4">0</div></div>
+    </div>
+    <div class="card">
+      <div class="card-title">Circuit Summary Table</div>
+      <div style="overflow-x:auto">
+        <table class="battery-table">
+          <thead><tr><th>Circuit</th><th>Type</th><th>Batteries</th><th>Start</th><th>Expected End</th><th>Readings</th><th>Status</th></tr></thead>
+          <tbody id="rpt-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <button class="btn btn-success" onclick="exportSummary()">&#11015; Summary CSV</button>
+      <button class="btn btn-success" onclick="exportReadings()">&#11015; Readings CSV</button>
+      <button class="btn btn-sheets" onclick="syncAll()">&#9729; Sync All Unsynced</button>
+    </div>
+  </div>
+  <div id="rpt-log" style="display:none">
+    <div class="card">
+      <div class="card-title">All Readings</div>
+      <div style="overflow-x:auto">
+        <table class="battery-table">
+          <thead><tr><th>Time</th><th>Circuit</th><th>Type</th><th>Operator</th><th>Mode</th><th>Step</th><th>Temp</th><th>Batteries</th><th>Final SG</th><th>Synced</th></tr></thead>
+          <tbody id="log-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  <div id="rpt-notif" style="display:none"><div class="card"><div class="card-title">Notification Log</div><div id="notif-log"></div></div></div>
+  <div id="rpt-sync" style="display:none"><div class="card"><div class="card-title">Sync Log</div><div id="sync-log"></div></div></div>
+</div>
+
+<!-- SETTINGS -->
+<div id="tab-settings" class="tab">
+  <div class="section-title">Settings</div>
+  <div class="card" style="border-color:#a9dfbf;background:#f0fff4">
+    <div class="card-title">&#9729; Google Sheets Connection</div>
+    <p style="font-size:13px;color:#555;margin-bottom:12px">Your Apps Script URL is pre-configured. Click Test to verify.</p>
+    <div style="margin-bottom:12px">
+      <label>Apps Script Web App URL</label>
+      <input type="text" id="sheets-url" value="https://script.google.com/macros/s/AKfycbwLztGVlMV6Z5MTYuzwBfVNPLIYS84v0LnbiFd-kAPUdvCePHGelzWQ2tbSuZ92cEDjfg/exec">
+    </div>
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
+      <button class="btn btn-sheets" onclick="testSheets()">&#128267; Test Connection</button>
+      <button class="btn btn-primary" onclick="saveSettings()">&#10004; Save Settings</button>
+      <span id="setsaved" style="font-size:12px;color:#27ae60;display:none;font-weight:500">&#10003; Saved!</span>
+      <span id="testres" style="font-size:12px;display:none"></span>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-title">&#128241; Notification Settings</div>
+    <div class="grid2" style="margin-bottom:12px">
+      <div><label>Phone Number (with country code)</label><input type="text" id="notif-phone" placeholder="+977 98XXXXXXXX"></div>
+      <div><label>Method</label><select id="notif-method"><option>WhatsApp</option><option>SMS</option><option>Both</option></select></div>
+    </div>
+    <div class="grid2" style="margin-bottom:14px">
+      <div><label>Supervisor Name</label><input type="text" id="sup-name" placeholder="Supervisor"></div>
+      <div><label>Department</label><input type="text" id="dept-name" placeholder="Battery Formation Dept"></div>
+    </div>
+    <button class="btn btn-primary" onclick="saveSettings()">&#10004; Save Settings</button>
+  </div>
+  <div class="card">
+    <div class="card-title">&#128190; Data Management</div>
+    <p style="font-size:13px;color:#666;margin-bottom:12px">Data saves in browser. Export regularly to Google Sheets for backup.</p>
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <button class="btn btn-success" onclick="exportSummary()">&#11015; Summary CSV</button>
+      <button class="btn btn-success" onclick="exportReadings()">&#11015; Readings CSV</button>
+      <button class="btn btn-danger" onclick="if(confirm('Reset ALL data?'))resetData()">&#128465; Reset All Data</button>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-title">&#127775; About</div>
+    <div style="font-size:13px;color:#666;line-height:2">
+      <strong>Battery Formation System v3.0</strong><br>
+      &#127968; Hosted on GitHub Pages — always up to date<br>
+      &#9729; Google Sheets integration — unlimited data<br>
+      &#128268; 28 circuits (G1-1 to G3-8), 20 batteries each<br>
+      &#127908; Voice entry (Chrome required)<br>
+      &#128241; WhatsApp/SMS notification on completion<br>
+      &#11015; CSV export anytime
+    </div>
+  </div>
+</div>
+
+</div><!-- end content -->
+<script src="app.js"></script>
+</body>
+</html>
