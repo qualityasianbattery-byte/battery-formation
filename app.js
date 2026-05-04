@@ -126,7 +126,10 @@ function registerFormation() {
   if(!c){ err.textContent='Please select a circuit.'; err.style.display='block'; return; }
   if(formations[c] && !formations[c].complete){ err.textContent='Circuit '+c+' already has an active formation.'; err.style.display='block'; return; }
   var sns = [];
-  for(var i=1;i<=20;i++){ var v=val('ns'+i); if(v.trim()) sns.push(v.trim()); }
+  for(var i=1;i<=20;i++){
+    var el=document.getElementById('ns'+i);
+    if(el && el.value.trim()) sns.push(el.value.trim());
+  }
   if(!sns.length){ err.textContent='Enter at least one battery serial number.'; err.style.display='block'; return; }
 
   var f = {
@@ -171,23 +174,26 @@ function loadBatteries() {
   if(!c || !formations[c]){ hint.style.display='block'; tableWrap.style.display='none'; return; }
   hint.style.display = 'none';
   tableWrap.style.display = 'block';
-  formations[c].batteries.forEach(function(sn, i) {
-    var tr = document.createElement('tr');
-    if(i%2) tr.className = 'row-alt';
-    tr.innerHTML =
-      '<td style="font-weight:600;text-align:center;width:30px">'+(i+1)+'</td>'+
-      '<td>'+
-        '<div style="display:flex;align-items:center;gap:4px">'+
-          '<input type="text" id="sn'+i+'" value="'+sn+'" style="width:110px;font-size:12px;font-weight:600" placeholder="Serial No">'+
-          '<button onclick="openScanner('+i+')" title="Scan barcode" style="padding:4px 7px;border:1px solid #8e44ad;border-radius:6px;background:#f8f0ff;cursor:pointer;font-size:14px;flex-shrink:0">&#128247;</button>'+
-        '</div>'+
-      '</td>'+
-      '<td><input type="number" id="rv'+i+'" placeholder="12.60" step="0.01" style="width:78px"></td>'+
-      '<td><input type="number" id="rc'+i+'" placeholder="5.00" step="0.01" style="width:78px"></td>'+
-      '<td><input type="number" id="rg'+i+'" placeholder="1.260" step="0.001" style="width:86px"></td>'+
-      '<td><select id="rs'+i+'" style="width:88px;font-size:12px"><option>OK</option><option>Low V</option><option>High V</option><option>Check</option><option>Fault</option></select></td>';
-    tbody.appendChild(tr);
-  });
+  var batteries = formations[c].batteries || [];
+  for(var idx=0; idx<batteries.length; idx++) {
+    (function(i, sn){
+      var tr = document.createElement('tr');
+      if(i%2) tr.className = 'row-alt';
+      tr.innerHTML =
+        '<td style="font-weight:600;text-align:center;width:36px">'+(i+1)+'</td>'+
+        '<td>'+
+          '<div style="display:flex;align-items:center;gap:4px">'+
+            '<input type="text" id="sn'+i+'" value="'+sn+'" style="width:110px;font-size:12px;font-weight:600" placeholder="Serial No">'+
+            '<button onclick="openScanner('+i+')" title="Scan" style="padding:4px 7px;border:1px solid #8e44ad;border-radius:6px;background:#f8f0ff;cursor:pointer;font-size:13px;flex-shrink:0">&#128247;</button>'+
+          '</div>'+
+        '</td>'+
+        '<td><input type="number" id="rv'+i+'" placeholder="12.60" step="0.01" style="width:76px"></td>'+
+        '<td><input type="number" id="rc'+i+'" placeholder="5.00" step="0.01" style="width:76px"></td>'+
+        '<td><input type="number" id="rg'+i+'" placeholder="1.260" step="0.001" style="width:84px"></td>'+
+        '<td><select id="rs'+i+'" style="width:86px;font-size:12px"><option>OK</option><option>Low V</option><option>High V</option><option>Check</option><option>Fault</option></select></td>';
+      tbody.appendChild(tr);
+    })(idx, batteries[idx]);
+  }
 }
 
 // ─── BARCODE SCANNER ─────────────────────────────────────────────────────────
@@ -256,18 +262,35 @@ function tryBarcodeDetector(video) {
 }
 
 function applyScannedSN(code) {
-  if(scannerTarget >= 0){
-    var el = document.getElementById('sn'+scannerTarget);
+  if(nfScanTarget > 0) {
+    // New Formation SN scanner
+    var el = document.getElementById('ns'+nfScanTarget);
     if(el){
       el.value = code;
       el.style.background = '#e8f8f0';
       el.style.borderColor = '#27ae60';
-      // Auto move to next row
-      var nextSN = document.getElementById('sn'+(scannerTarget+1));
-      if(nextSN) setTimeout(function(){ openScanner(scannerTarget+1); }, 500);
     }
+    closeScanner();
+    // Auto-advance to next row
+    var next = document.getElementById('ns'+(nfScanTarget+1));
+    if(next) setTimeout(function(){ openNFScanner(nfScanTarget+1); }, 600);
+    nfScanTarget = -1;
+  } else if(scannerTarget >= 0) {
+    // Reading SN scanner
+    var el2 = document.getElementById('sn'+scannerTarget);
+    if(el2){
+      el2.value = code;
+      el2.style.background = '#e8f8f0';
+      el2.style.borderColor = '#27ae60';
+    }
+    closeScanner();
+    // Auto-advance to next battery
+    var next2 = document.getElementById('sn'+(scannerTarget+1));
+    if(next2) setTimeout(function(){ openScanner(scannerTarget+1); }, 600);
+    scannerTarget = -1;
+  } else {
+    closeScanner();
   }
-  closeScanner();
 }
 
 function manualScanSubmit() {
@@ -434,12 +457,44 @@ function buildCircuitGrids() {
 
 function buildBattFields() {
   var g = document.getElementById('nf-batt-grid');
-  g.innerHTML = '';
+  g.innerHTML =
+    '<div style="overflow-y:auto;max-height:360px;border:1px solid #e8ecf0;border-radius:10px">'+
+    '<table style="width:100%;border-collapse:collapse;font-size:13px">'+
+    '<thead style="position:sticky;top:0;background:#f8f9ff;z-index:5">'+
+    '<tr>'+
+    '<th style="padding:9px 12px;text-align:left;border-bottom:2px solid #e8ecf0;width:50px;color:#555;font-weight:600">#</th>'+
+    '<th style="padding:9px 12px;text-align:left;border-bottom:2px solid #e8ecf0;color:#555;font-weight:600">Battery Serial Number</th>'+
+    '<th style="padding:9px 12px;text-align:left;border-bottom:2px solid #e8ecf0;color:#555;font-weight:600">Scan</th>'+
+    '</tr></thead><tbody id="nf-sn-tbody"></tbody></table></div>';
+
+  var tbody = document.getElementById('nf-sn-tbody');
   for(var i=1;i<=20;i++) {
-    var d = document.createElement('div');
-    d.innerHTML = '<label>Battery '+i+' S/N</label><input type="text" id="ns'+i+'" placeholder="SN-'+String(i).padStart(3,'0')+'">';
-    g.appendChild(d);
+    var tr = document.createElement('tr');
+    tr.style.cssText = i%2===0 ? 'background:#fafbff' : '';
+    tr.innerHTML =
+      '<td style="padding:6px 12px;border-bottom:1px solid #f0f2f5;color:#888;font-weight:600;font-size:12px">'+i+'</td>'+
+      '<td style="padding:4px 8px;border-bottom:1px solid #f0f2f5">'+
+        '<input type="text" id="ns'+i+'" placeholder="Enter or scan serial number" '+
+        'style="width:100%;padding:7px 10px;border:1px solid #dde1e7;border-radius:6px;font-size:13px;font-weight:500" '+
+        'onkeydown="if(event.key==='Enter'){event.preventDefault();var nx=document.getElementById('ns'+(i<20?'ns'+(i+1):'ns'+i)+'');if(nx)nx.focus();}">'+
+      '</td>'+
+      '<td style="padding:4px 8px;border-bottom:1px solid #f0f2f5">'+
+        '<button onclick="openNFScanner('+i+')" title="Scan barcode" style="padding:5px 9px;border:1px solid #8e44ad;border-radius:6px;background:#f8f0ff;cursor:pointer;font-size:15px">&#128247;</button>'+
+      '</td>';
+    tbody.appendChild(tr);
   }
+}
+
+// Scanner for New Formation SN entry
+var nfScanTarget = -1;
+function openNFScanner(rowNum) {
+  nfScanTarget = rowNum;
+  scannerTarget = -1; // disable reading scanner
+  document.getElementById('scanner-modal').style.display = 'flex';
+  document.getElementById('manual-scan-input').value = '';
+  document.getElementById('scanner-manual').style.display = 'none';
+  document.getElementById('scanner-status').textContent = 'Starting camera for Battery '+rowNum+'...';
+  startCamera();
 }
 
 function setNow() {
