@@ -108,50 +108,24 @@
       <div><label>Reading Date &amp; Time</label><input type="datetime-local" id="rd-dt"></div>
       <div><label>Operator Name</label><input type="text" id="rd-op" placeholder="Operator name"></div>
     </div>
-    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:14px">
-      <div><label>Temperature (&#176;C)</label><input type="number" id="rd-temp" placeholder="28"></div>
+    <div class="grid4" style="margin-bottom:14px">
+      <div><label>Temperature (°C)</label><input type="number" id="rd-temp" placeholder="28"></div>
       <div><label>Step No.</label><input type="number" id="rd-step" placeholder="1"></div>
       <div><label>Mode</label><select id="rd-mode"><option>Charge</option><option>Discharge</option><option>Rest</option></select></div>
       <div><label>Final SP Gravity</label><input type="number" id="rd-fsg" placeholder="1.280" step="0.001"></div>
-      <div><label>Duration (hrs/min)</label><input type="text" id="rd-duration" placeholder="e.g. 2h 30m"></div>
     </div>
     <div id="rd-hint" class="info-bar">&#9888; Select an active circuit above to load battery list.</div>
-    <div id="rd-table-wrap" style="display:none">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-        <div style="font-size:12px;font-weight:600;color:#555">Battery Reading Table &mdash; <span style="color:#8e44ad">&#128247; click camera icon to scan barcode</span></div>
-        <div style="font-size:11px;color:#888">Scroll to see all batteries &#8595;</div>
-      </div>
-      <div style="overflow-x:auto;overflow-y:auto;max-height:420px;border:1px solid #e8ecf0;border-radius:10px">
-        <table class="battery-table" style="min-width:600px">
-          <thead style="position:sticky;top:0;z-index:10;background:#f8f9ff">
-            <tr><th style="width:36px">#</th><th style="min-width:160px">Serial No. &#128247;</th><th>Voltage (V)</th><th>Current (A)</th><th>SP Gravity</th><th>Status</th></tr>
-          </thead>
-          <tbody id="rd-rows"></tbody>
-        </table>
-      </div>
+    <div style="overflow-x:auto">
+      <table class="battery-table">
+        <thead><tr><th>#</th><th>Serial No.</th><th>Voltage (V)</th><th>Current (A)</th><th>SP Gravity</th><th>Status</th></tr></thead>
+        <tbody id="rd-rows"></tbody>
+      </table>
     </div>
     <div style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap">
       <button class="btn btn-sheets" id="btn-save-reading" onclick="saveReading()">&#9729; Save to Google Sheets</button>
       <button class="btn" onclick="demoFill()">&#127922; Demo Fill</button>
       <button class="btn" onclick="clearForm()">&#10006; Clear</button>
     </div>
-  </div>
-</div>
-
-<!-- BARCODE SCANNER MODAL -->
-<div id="scanner-modal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.88);z-index:9998;flex-direction:column;align-items:center;justify-content:center">
-  <div style="background:#1a1a2e;border-radius:16px;padding:20px;width:92%;max-width:420px;color:#fff;text-align:center">
-    <div style="font-size:16px;font-weight:600;margin-bottom:4px">&#128247; Scan Barcode / QR Code</div>
-    <div id="scanner-status" style="font-size:12px;opacity:0.7;margin-bottom:12px">Starting camera...</div>
-    <video id="scanner-video" style="width:100%;border-radius:10px;background:#000;max-height:260px" playsinline muted></video>
-    <div id="scanner-manual" style="display:none;margin-top:14px">
-      <div style="font-size:12px;opacity:0.7;margin-bottom:8px">Or type / paste serial number:</div>
-      <div style="display:flex;gap:8px">
-        <input type="text" id="manual-scan-input" placeholder="Type serial number..." style="flex:1;border-radius:8px;padding:9px;border:none;font-size:14px;color:#1a1a2e" onkeydown="if(event.key==='Enter')manualScanSubmit()">
-        <button onclick="manualScanSubmit()" style="padding:9px 16px;background:#27ae60;color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:16px">&#10003;</button>
-      </div>
-    </div>
-    <button onclick="closeScanner()" style="margin-top:16px;padding:10px 28px;background:#e74c3c;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:14px;font-weight:600">&#10006; Cancel</button>
   </div>
 </div>
 
