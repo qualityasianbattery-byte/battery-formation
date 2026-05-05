@@ -535,35 +535,6 @@ function buildCircuitGrids() {
   });
 }
 
-function buildBattFields() {
-  var g = document.getElementById('nf-batt-grid');
-  g.innerHTML =
-    '<div style="overflow-y:auto;max-height:360px;border:1px solid #e8ecf0;border-radius:10px">'+
-    '<table style="width:100%;border-collapse:collapse;font-size:13px">'+
-    '<thead style="position:sticky;top:0;background:#f8f9ff;z-index:5">'+
-    '<tr>'+
-    '<th style="padding:9px 12px;text-align:left;border-bottom:2px solid #e8ecf0;width:50px;color:#555;font-weight:600">#</th>'+
-    '<th style="padding:9px 12px;text-align:left;border-bottom:2px solid #e8ecf0;color:#555;font-weight:600">Battery Serial Number</th>'+
-    '<th style="padding:9px 12px;text-align:left;border-bottom:2px solid #e8ecf0;color:#555;font-weight:600">Scan</th>'+
-    '</tr></thead><tbody id="nf-sn-tbody"></tbody></table></div>';
-
-  var tbody = document.getElementById('nf-sn-tbody');
-  for(var i=1;i<=20;i++) {
-    var tr = document.createElement('tr');
-    tr.style.cssText = i%2===0 ? 'background:#fafbff' : '';
-    tr.innerHTML =
-      '<td style="padding:6px 12px;border-bottom:1px solid #f0f2f5;color:#888;font-weight:600;font-size:12px">'+i+'</td>'+
-      '<td style="padding:4px 8px;border-bottom:1px solid #f0f2f5">'+
-        '<input type="text" id="ns'+i+'" placeholder="Enter or scan serial number" '+
-        'style="width:100%;padding:7px 10px;border:1px solid #dde1e7;border-radius:6px;font-size:13px;font-weight:500" '+
-        'onkeydown="if(event.key==='Enter'){event.preventDefault();var nx=document.getElementById('ns'+(i<20?'ns'+(i+1):'ns'+i)+'');if(nx)nx.focus();}">'+
-      '</td>'+
-      '<td style="padding:4px 8px;border-bottom:1px solid #f0f2f5">'+
-        '<button onclick="openNFScanner('+i+')" title="Scan barcode" style="padding:5px 9px;border:1px solid #8e44ad;border-radius:6px;background:#f8f0ff;cursor:pointer;font-size:15px">&#128247;</button>'+
-      '</td>';
-    tbody.appendChild(tr);
-  }
-}
 
 // Scanner for New Formation SN entry
 var nfScanTarget = -1;
