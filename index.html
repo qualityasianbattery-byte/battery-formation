@@ -84,7 +84,7 @@
       <div><label>Expected End Date &amp; Time</label><input type="datetime-local" id="nf-end"></div>
     </div>
     <div class="card-title">Battery Serial Numbers (up to 20)</div>
-    <div id="nf-batt-grid" style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:16px"></div>
+    <div id="nf-batt-grid" style="margin-bottom:14px"></div>
     <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
       <button class="btn btn-primary" id="btn-register" onclick="registerFormation()">&#10004; Register Formation</button>
       <button class="btn btn-voice" id="voice-nf" onclick="toggleVoice('nf')">&#127908;</button>
@@ -109,11 +109,16 @@
       <div><label>Operator Name</label><input type="text" id="rd-op" placeholder="Operator name"></div>
     </div>
     <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:14px">
-      <div><label>Temperature (&#176;C)</label><input type="number" id="rd-temp" placeholder="28"></div>
+      <div><label>Temperature (&deg;C)</label><input type="number" id="rd-temp" placeholder="28"></div>
       <div><label>Step No.</label><input type="number" id="rd-step" placeholder="1"></div>
       <div><label>Mode</label><select id="rd-mode"><option>Charge</option><option>Discharge</option><option>Rest</option></select></div>
       <div><label>Final SP Gravity</label><input type="number" id="rd-fsg" placeholder="1.280" step="0.001"></div>
-      <div><label>Duration (hrs/min)</label><input type="text" id="rd-duration" placeholder="e.g. 2h 30m"></div>
+      <div><label>Last Step Completed</label><input type="text" id="rd-laststep" placeholder="e.g. Step 5"></div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 2fr;gap:10px;margin-bottom:14px;padding:12px;background:#f8f9ff;border-radius:10px;border:1px solid #e8ecf0">
+      <div><label>&#9201; Duration — Hours</label><input type="number" id="rd-duration-hr" placeholder="0" min="0" max="99"></div>
+      <div><label>&#9201; Duration — Minutes</label><input type="number" id="rd-duration-min" placeholder="0" min="0" max="59"></div>
+      <div style="display:flex;align-items:flex-end"><div style="font-size:12px;color:#888;padding-bottom:8px">Total reading duration in hours and minutes e.g. 2 hours 30 minutes</div></div>
     </div>
     <div id="rd-hint" class="info-bar">&#9888; Select an active circuit above to load battery list.</div>
     <div id="rd-table-wrap" style="display:none">
@@ -245,5 +250,27 @@
 
 </div>
 <script src="app.js"></script>
+<!-- QR / BARCODE SCANNER MODAL — Registration only -->
+<div id="qr-modal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.90);z-index:9998;flex-direction:column;align-items:center;justify-content:center">
+  <div style="background:#1a1a2e;border-radius:16px;padding:20px;width:93%;max-width:440px;color:#fff;text-align:center">
+    <div style="font-size:17px;font-weight:700;margin-bottom:4px">&#128247; Scan QR / Barcode</div>
+    <div id="qr-status" style="font-size:12px;opacity:0.7;margin-bottom:12px">Starting camera...</div>
+    <div style="position:relative;width:100%;border-radius:12px;overflow:hidden;background:#000">
+      <video id="qr-video" style="width:100%;max-height:280px;display:block" playsinline muted></video>
+      <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:180px;height:180px;border:3px solid #27ae60;border-radius:12px;box-shadow:0 0 0 9999px rgba(0,0,0,0.35)"></div>
+    </div>
+    <div id="qr-manual-section" style="display:none;margin-top:14px">
+      <div style="font-size:12px;opacity:0.75;margin-bottom:8px">Or type / paste serial number manually:</div>
+      <div style="display:flex;gap:8px">
+        <input type="text" id="qr-manual-input" placeholder="Type serial number..." style="flex:1;border-radius:8px;padding:9px 12px;border:none;font-size:14px;color:#1a1a2e;font-weight:500" onkeydown="if(event.key==='Enter')qrManualSubmit()">
+        <button onclick="qrManualSubmit()" style="padding:9px 18px;background:#27ae60;color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:16px">&#10003;</button>
+      </div>
+    </div>
+    <div style="display:flex;gap:10px;justify-content:center;margin-top:16px">
+      <button onclick="document.getElementById('qr-manual-section').style.display='block'" style="padding:9px 18px;background:#0f3460;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px">&#9000; Manual Entry</button>
+      <button onclick="closeQRScanner()" style="padding:9px 22px;background:#e74c3c;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600">&#10006; Cancel</button>
+    </div>
+  </div>
+</div>
 </body>
 </html>

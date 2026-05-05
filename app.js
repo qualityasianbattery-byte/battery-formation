@@ -119,15 +119,18 @@ function loadAllFromSheets() {
 }
 
 // ─── REGISTER FORMATION ───────────────────────────────────────────────────────
+
+// ─── REGISTER FORMATION ───────────────────────────────────────────────────────
 function registerFormation() {
   var c = val('nf-circuit');
   var err = document.getElementById('nf-err');
   err.style.display = 'none';
   if(!c){ err.textContent='Please select a circuit.'; err.style.display='block'; return; }
   if(formations[c] && !formations[c].complete){ err.textContent='Circuit '+c+' already has an active formation.'; err.style.display='block'; return; }
+
   var sns = [];
   for(var i=1;i<=20;i++){
-    var el=document.getElementById('ns'+i);
+    var el = document.getElementById('ns'+i);
     if(el && el.value.trim()) sns.push(el.value.trim());
   }
   if(!sns.length){ err.textContent='Enter at least one battery serial number.'; err.style.display='block'; return; }
@@ -140,6 +143,7 @@ function registerFormation() {
     sg: val('nf-sg'),
     batteries: sns,
     readingCount: 0,
+    lastStep: '',
     complete: false,
     completeTick: false,
     at: new Date().toISOString()
@@ -149,11 +153,11 @@ function registerFormation() {
   setBtnLoading('btn-register', true);
   sheetsPost({
     sheet: 'Formations',
-    headers: ['Circuit','Type','Battery SNs','Batteries Count','Start','Expected End','Initial SG','Status','Reading Count','Completed At','Registered At'],
-    row: [c, f.type, sns.join(','), sns.length, f.start, f.end, f.sg, 'Active', 0, '', f.at]
+    headers: ['Circuit','Type','Battery SNs','Batteries Count','Start','Expected End','Initial SG','Status','Reading Count','Last Step','Completed At','Registered At'],
+    row: [c, f.type, sns.join(','), sns.length, f.start, f.end, f.sg, 'Active', 0, '', '', f.at]
   }, function(err2) {
     setBtnLoading('btn-register', false);
-    if(err2){ showError('Failed to save to Google Sheets. Check connection.'); return; }
+    if(err2){ showError('Failed to save. Check connection.'); return; }
     buildCircuitGrids();
     updateDash();
     updateCompleteList();
@@ -162,7 +166,172 @@ function registerFormation() {
   });
 }
 
-// ─── LOAD BATTERIES FOR READING ──────────────────────────────────────────────
+// ─── BUILD SHEET-LIKE SN TABLE FOR REGISTRATION ───────────────────────────────
+function buildBattFields() {
+  var container = document.getElementById('nf-batt-grid');
+  container.innerHTML = '';
+
+  // Build scrollable spreadsheet-like table
+  var wrap = document.createElement('div');
+  wrap.style.cssText = 'border:1px solid #dde1e7;border-radius:10px;overflow:hidden';
+
+  var scrollBox = document.createElement('div');
+  scrollBox.style.cssText = 'overflow-y:auto;max-height:380px';
+
+  var table = document.createElement('table');
+  table.style.cssText = 'width:100%;border-collapse:collapse;font-size:13px';
+
+  // Sticky header
+  var thead = document.createElement('thead');
+  thead.innerHTML =
+    '<tr style="background:#0f3460;color:#fff;position:sticky;top:0;z-index:5">'+
+    '<th style="padding:10px 14px;text-align:left;width:50px;font-weight:600">#</th>'+
+    '<th style="padding:10px 14px;text-align:left;font-weight:600">Battery Serial Number</th>'+
+    '<th style="padding:10px 14px;text-align:center;width:60px;font-weight:600">&#128247;</th>'+
+    '</tr>';
+  table.appendChild(thead);
+
+  var tbody = document.createElement('tbody');
+  for(var i=1;i<=20;i++){
+    var tr = document.createElement('tr');
+    tr.id = 'nf-row-'+i;
+    tr.style.cssText = (i%2===0) ? 'background:#f8f9ff' : 'background:#fff';
+    tr.innerHTML =
+      '<td style="padding:6px 14px;border-bottom:1px solid #f0f2f5;color:#888;font-weight:700;font-size:12px">'+i+'</td>'+
+      '<td style="padding:4px 8px;border-bottom:1px solid #f0f2f5">'+
+        '<input type="text" id="ns'+i+'" placeholder="Click to type or scan &#128247;" '+
+        'style="width:100%;padding:8px 10px;border:1px solid transparent;border-radius:6px;font-size:13px;font-weight:500;background:transparent;transition:all 0.2s" '+
+        'onfocus="this.style.border=\'1px solid #0f3460\';this.style.background=\'#fff\';this.style.boxShadow=\'0 0 0 3px rgba(15,52,96,0.08)\'" '+
+        'onblur="this.style.border=\'1px solid transparent\';this.style.background=\'transparent\';this.style.boxShadow=\'none\'" '+
+        'onkeydown="snKeyNav(event,'+i+')" '+
+        '>'+
+      '</td>'+
+      '<td style="padding:4px 8px;border-bottom:1px solid #f0f2f5;text-align:center">'+
+        '<button onclick="openQRScanner('+i+')" title="Scan QR/Barcode" '+
+        'style="padding:5px 10px;border:1px solid #8e44ad;border-radius:6px;background:#f8f0ff;cursor:pointer;font-size:15px;transition:all 0.2s" '+
+        'onmouseover="this.style.background=\'#8e44ad\';this.style.color=\'#fff\'" '+
+        'onmouseout="this.style.background=\'#f8f0ff\';this.style.color=\'inherit\'">'+
+        '&#128247;</button>'+
+      '</td>';
+    tbody.appendChild(tr);
+  }
+  table.appendChild(tbody);
+  scrollBox.appendChild(table);
+  wrap.appendChild(scrollBox);
+  container.appendChild(wrap);
+
+  // Helper text
+  var hint = document.createElement('div');
+  hint.style.cssText = 'font-size:11px;color:#888;margin-top:6px;padding:0 4px';
+  hint.innerHTML = '&#9432; Press <strong>Enter</strong> or <strong>Tab</strong> to move to next row &nbsp;|&nbsp; Click &#128247; to scan QR/Barcode';
+  container.appendChild(hint);
+}
+
+// Enter/Tab key navigation between SN rows
+function snKeyNav(e, rowNum) {
+  if(e.key === 'Enter' || e.key === 'Tab') {
+    e.preventDefault();
+    var next = document.getElementById('ns'+(rowNum+1));
+    if(next) {
+      next.focus();
+      next.scrollIntoView({behavior:'smooth', block:'nearest'});
+    }
+  }
+}
+
+// ─── QR/BARCODE SCANNER (Register form only) ─────────────────────────────────
+var qrScanTarget = 0;
+var qrStream = null;
+var qrInterval = null;
+
+function openQRScanner(rowNum) {
+  qrScanTarget = rowNum;
+  var modal = document.getElementById('qr-modal');
+  modal.style.display = 'flex';
+  document.getElementById('qr-manual-input').value = '';
+  document.getElementById('qr-manual-section').style.display = 'none';
+  document.getElementById('qr-status').textContent = 'Opening camera for Battery '+rowNum+'...';
+  startQRCamera();
+}
+
+function closeQRScanner() {
+  document.getElementById('qr-modal').style.display = 'none';
+  stopQRCamera();
+}
+
+function startQRCamera() {
+  var video = document.getElementById('qr-video');
+  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    document.getElementById('qr-status').textContent = 'Camera not available.';
+    document.getElementById('qr-manual-section').style.display = 'block';
+    return;
+  }
+  navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}})
+    .then(function(stream) {
+      qrStream = stream;
+      video.srcObject = stream;
+      video.play();
+      document.getElementById('qr-status').textContent = 'Point at QR code or barcode...';
+      startQRDetection(video);
+    })
+    .catch(function() {
+      document.getElementById('qr-status').textContent = 'Camera blocked. Use manual entry.';
+      document.getElementById('qr-manual-section').style.display = 'block';
+    });
+}
+
+function stopQRCamera() {
+  if(qrInterval){ clearInterval(qrInterval); qrInterval=null; }
+  if(qrStream){ qrStream.getTracks().forEach(function(t){t.stop();}); qrStream=null; }
+  var video = document.getElementById('qr-video');
+  if(video) video.srcObject = null;
+}
+
+function startQRDetection(video) {
+  if(!window.BarcodeDetector) {
+    document.getElementById('qr-status').textContent = 'Auto-scan not supported in this browser. Use manual entry.';
+    document.getElementById('qr-manual-section').style.display = 'block';
+    return;
+  }
+  var detector = new BarcodeDetector({
+    formats:['qr_code','code_128','code_39','ean_13','ean_8','data_matrix','upc_a','upc_e','pdf417']
+  });
+  qrInterval = setInterval(function() {
+    if(!qrStream){ clearInterval(qrInterval); return; }
+    detector.detect(video).then(function(codes) {
+      if(codes.length > 0) {
+        clearInterval(qrInterval);
+        applyQRCode(codes[0].rawValue);
+      }
+    }).catch(function(){});
+  }, 300);
+}
+
+function applyQRCode(code) {
+  var el = document.getElementById('ns'+qrScanTarget);
+  if(el) {
+    el.value = code;
+    el.style.background = '#e8f8f0';
+    el.style.borderColor = '#27ae60';
+    // Highlight the row
+    var row = document.getElementById('nf-row-'+qrScanTarget);
+    if(row) row.style.background = '#e8f8f0';
+    setTimeout(function(){
+      if(row) row.style.background = qrScanTarget%2===0?'#f8f9ff':'#fff';
+    }, 2000);
+  }
+  closeQRScanner();
+  // Auto open next row scanner
+  if(qrScanTarget < 20) {
+    setTimeout(function(){ openQRScanner(qrScanTarget+1); }, 700);
+  }
+}
+
+function qrManualSubmit() {
+  var v = document.getElementById('qr-manual-input').value.trim();
+  if(!v){ alert('Please enter a serial number.'); return; }
+  applyQRCode(v);
+}
 
 // ─── LOAD BATTERIES FOR READING ──────────────────────────────────────────────
 function loadBatteries() {
@@ -171,132 +340,30 @@ function loadBatteries() {
   var hint = document.getElementById('rd-hint');
   var tableWrap = document.getElementById('rd-table-wrap');
   tbody.innerHTML = '';
-  if(!c || !formations[c]){ hint.style.display='block'; tableWrap.style.display='none'; return; }
+
+  if(!c || !formations[c]) {
+    hint.style.display = 'block';
+    tableWrap.style.display = 'none';
+    return;
+  }
   hint.style.display = 'none';
   tableWrap.style.display = 'block';
+
   var batteries = formations[c].batteries || [];
-  for(var idx=0; idx<batteries.length; idx++) {
-    (function(i, sn){
+  for(var i=0; i<batteries.length; i++) {
+    (function(idx, sn){
       var tr = document.createElement('tr');
-      if(i%2) tr.className = 'row-alt';
+      tr.style.cssText = idx%2===0 ? 'background:#fff' : 'background:#fafbff';
       tr.innerHTML =
-        '<td style="font-weight:600;text-align:center;width:36px">'+(i+1)+'</td>'+
-        '<td>'+
-          '<div style="display:flex;align-items:center;gap:4px">'+
-            '<input type="text" id="sn'+i+'" value="'+sn+'" style="width:110px;font-size:12px;font-weight:600" placeholder="Serial No">'+
-            '<button onclick="openScanner('+i+')" title="Scan" style="padding:4px 7px;border:1px solid #8e44ad;border-radius:6px;background:#f8f0ff;cursor:pointer;font-size:13px;flex-shrink:0">&#128247;</button>'+
-          '</div>'+
-        '</td>'+
-        '<td><input type="number" id="rv'+i+'" placeholder="12.60" step="0.01" style="width:76px"></td>'+
-        '<td><input type="number" id="rc'+i+'" placeholder="5.00" step="0.01" style="width:76px"></td>'+
-        '<td><input type="number" id="rg'+i+'" placeholder="1.260" step="0.001" style="width:84px"></td>'+
-        '<td><select id="rs'+i+'" style="width:86px;font-size:12px"><option>OK</option><option>Low V</option><option>High V</option><option>Check</option><option>Fault</option></select></td>';
+        '<td style="padding:7px 10px;border-bottom:1px solid #f0f2f5;font-weight:700;text-align:center;color:#888;font-size:12px">'+(idx+1)+'</td>'+
+        '<td style="padding:6px 8px;border-bottom:1px solid #f0f2f5;font-weight:600;font-size:13px;color:#0f3460">'+sn+'</td>'+
+        '<td style="padding:4px 6px;border-bottom:1px solid #f0f2f5"><input type="number" id="rv'+idx+'" placeholder="12.60" step="0.01" style="width:80px;padding:6px 8px;border:1px solid #dde1e7;border-radius:6px;font-size:12px"></td>'+
+        '<td style="padding:4px 6px;border-bottom:1px solid #f0f2f5"><input type="number" id="rc'+idx+'" placeholder="5.00" step="0.01" style="width:80px;padding:6px 8px;border:1px solid #dde1e7;border-radius:6px;font-size:12px"></td>'+
+        '<td style="padding:4px 6px;border-bottom:1px solid #f0f2f5"><input type="number" id="rg'+idx+'" placeholder="1.260" step="0.001" style="width:88px;padding:6px 8px;border:1px solid #dde1e7;border-radius:6px;font-size:12px"></td>'+
+        '<td style="padding:4px 6px;border-bottom:1px solid #f0f2f5"><select id="rs'+idx+'" style="width:90px;font-size:12px;padding:6px 8px;border:1px solid #dde1e7;border-radius:6px"><option>OK</option><option>Low V</option><option>High V</option><option>Check</option><option>Fault</option></select></td>';
       tbody.appendChild(tr);
-    })(idx, batteries[idx]);
+    })(i, batteries[i]);
   }
-}
-
-// ─── BARCODE SCANNER ─────────────────────────────────────────────────────────
-var scannerTarget = -1;
-var scannerStream = null;
-var scannerInterval = null;
-
-function openScanner(rowIndex) {
-  scannerTarget = rowIndex;
-  document.getElementById('scanner-modal').style.display = 'flex';
-  document.getElementById('manual-scan-input').value = '';
-  document.getElementById('scanner-manual').style.display = 'none';
-  startCamera();
-}
-
-function closeScanner() {
-  document.getElementById('scanner-modal').style.display = 'none';
-  stopCamera();
-  if(scannerInterval){ clearInterval(scannerInterval); scannerInterval=null; }
-}
-
-function startCamera() {
-  var video = document.getElementById('scanner-video');
-  var statusEl = document.getElementById('scanner-status');
-  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
-    statusEl.textContent = 'Camera not available. Use manual entry below.';
-    document.getElementById('scanner-manual').style.display = 'block';
-    return;
-  }
-  navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}})
-    .then(function(stream){
-      scannerStream = stream;
-      video.srcObject = stream;
-      video.play();
-      statusEl.textContent = 'Point camera at barcode...';
-      tryBarcodeDetector(video);
-    })
-    .catch(function(){
-      statusEl.textContent = 'Camera blocked. Use manual entry below.';
-      document.getElementById('scanner-manual').style.display = 'block';
-    });
-}
-
-function stopCamera() {
-  if(scannerStream){ scannerStream.getTracks().forEach(function(t){t.stop();}); scannerStream=null; }
-  var video = document.getElementById('scanner-video');
-  if(video) video.srcObject = null;
-}
-
-function tryBarcodeDetector(video) {
-  if(!window.BarcodeDetector){
-    document.getElementById('scanner-status').textContent = 'Auto-scan not supported. Use manual entry below.';
-    document.getElementById('scanner-manual').style.display = 'block';
-    return;
-  }
-  var detector = new BarcodeDetector({formats:['code_128','code_39','ean_13','ean_8','qr_code','data_matrix','upc_a','upc_e']});
-  scannerInterval = setInterval(function(){
-    if(!scannerStream){ clearInterval(scannerInterval); return; }
-    detector.detect(video).then(function(barcodes){
-      if(barcodes.length > 0){
-        clearInterval(scannerInterval);
-        applyScannedSN(barcodes[0].rawValue);
-      }
-    }).catch(function(){});
-  }, 400);
-}
-
-function applyScannedSN(code) {
-  if(nfScanTarget > 0) {
-    // New Formation SN scanner
-    var el = document.getElementById('ns'+nfScanTarget);
-    if(el){
-      el.value = code;
-      el.style.background = '#e8f8f0';
-      el.style.borderColor = '#27ae60';
-    }
-    closeScanner();
-    // Auto-advance to next row
-    var next = document.getElementById('ns'+(nfScanTarget+1));
-    if(next) setTimeout(function(){ openNFScanner(nfScanTarget+1); }, 600);
-    nfScanTarget = -1;
-  } else if(scannerTarget >= 0) {
-    // Reading SN scanner
-    var el2 = document.getElementById('sn'+scannerTarget);
-    if(el2){
-      el2.value = code;
-      el2.style.background = '#e8f8f0';
-      el2.style.borderColor = '#27ae60';
-    }
-    closeScanner();
-    // Auto-advance to next battery
-    var next2 = document.getElementById('sn'+(scannerTarget+1));
-    if(next2) setTimeout(function(){ openScanner(scannerTarget+1); }, 600);
-    scannerTarget = -1;
-  } else {
-    closeScanner();
-  }
-}
-
-function manualScanSubmit() {
-  var v = document.getElementById('manual-scan-input').value.trim();
-  if(v) applyScannedSN(v);
-  else alert('Please enter a serial number.');
 }
 
 // ─── SAVE READING ─────────────────────────────────────────────────────────────
@@ -304,20 +371,20 @@ function saveReading() {
   var c = val('rd-circuit');
   if(!c || !formations[c]){ alert('Please select an active circuit first.'); return; }
 
-  // Collect battery data — SN from editable input, not static cell
-  var bats = [];
-  var numBats = formations[c].batteries.length;
-  for(var i=0; i<numBats; i++){
-    var snEl = document.getElementById('sn'+i);
-    var sn = snEl ? snEl.value.trim() : formations[c].batteries[i];
-    var voltage = (document.getElementById('rv'+i)||{}).value||'';
-    var current = (document.getElementById('rc'+i)||{}).value||'';
-    var sg = (document.getElementById('rg'+i)||{}).value||'';
-    var status = (document.getElementById('rs'+i)||{}).value||'OK';
-    bats.push({sn:sn, voltage:voltage, current:current, sg:sg, status:status});
-  }
+  var batteries = formations[c].batteries || [];
+  if(batteries.length === 0){ alert('No batteries found for this circuit.'); return; }
 
-  if(bats.length === 0){ alert('No batteries loaded. Please select a circuit first.'); return; }
+  // Collect all battery readings
+  var bats = [];
+  for(var i=0; i<batteries.length; i++){
+    bats.push({
+      sn: batteries[i],
+      voltage: (document.getElementById('rv'+i)||{}).value||'',
+      current: (document.getElementById('rc'+i)||{}).value||'',
+      sg: (document.getElementById('rg'+i)||{}).value||'',
+      status: (document.getElementById('rs'+i)||{}).value||'OK'
+    });
+  }
 
   var rid = Date.now();
   var dt = val('rd-dt');
@@ -326,7 +393,9 @@ function saveReading() {
   var step = val('rd-step');
   var mode = val('rd-mode');
   var fsg = val('rd-fsg');
-  var duration = val('rd-duration'); // NEW: reading duration
+  var durationHr = val('rd-duration-hr')||'0';
+  var durationMin = val('rd-duration-min')||'0';
+  var duration = durationHr+'h '+durationMin+'m';
   var btype = formations[c].type;
 
   setBtnLoading('btn-save-reading', true);
@@ -334,37 +403,49 @@ function saveReading() {
   msg.innerHTML = '<span class="spinner"></span> Saving battery 1 of '+bats.length+'...';
   msg.style.background='#e8f8f0'; msg.style.color='#27ae60'; msg.style.display='block';
 
-  var saved = 0, failed = 0;
+  var saved=0, failed=0;
 
   function saveNext(index) {
     if(index >= bats.length) {
       setBtnLoading('btn-save-reading', false);
       if(failed === 0) {
+        // Update formation reading count and last step
         formations[c].readingCount = (formations[c].readingCount||0) + 1;
+        formations[c].lastStep = step || formations[c].lastStep;
         totalReadings++;
         updateDash();
+        updateCompleteList();
+
+        // Update Formations sheet — reading count (col 9) and last step (col 10)
         sheetsPost({sheet:'Formations',action:'update',keyCol:1,keyVal:c,updateCol:9,updateVal:formations[c].readingCount}, null);
-        msg.innerHTML = '&#10003; All '+bats.length+' batteries saved to Google Sheets!';
-        setTimeout(function(){ msg.style.display='none'; }, 5000);
+        sheetsPost({sheet:'Formations',action:'update',keyCol:1,keyVal:c,updateCol:10,updateVal:step||''}, null);
+
+        msg.innerHTML = '&#10003; All '+bats.length+' batteries saved! Reading #'+formations[c].readingCount+', Step '+step;
+        setTimeout(function(){ msg.style.display='none'; }, 6000);
         show('rd-ok', 3000);
         setNow();
-        addSyncLog(c+' — '+bats.length+' batteries', 'Success');
+        // Clear duration fields
+        setVal('rd-duration-hr','');
+        setVal('rd-duration-min','');
+        addSyncLog(c+' — '+bats.length+' batteries, Step '+step+', '+duration, 'Success');
       } else {
-        msg.innerHTML = '&#10006; '+failed+' batteries failed. Check internet and try again.';
+        msg.innerHTML = '&#10006; '+failed+' batteries failed. Check internet.';
         msg.style.background='#fdecea'; msg.style.color='#c0392b';
         addSyncLog(c, failed+' failed');
         setTimeout(function(){ msg.style.display='none'; }, 6000);
       }
       return;
     }
+
     var b = bats[index];
-    msg.innerHTML = '<span class="spinner"></span> Saving battery '+(index+1)+' of '+bats.length+': '+b.sn+'...';
+    msg.innerHTML = '<span class="spinner"></span> Saving battery '+(index+1)+' of '+bats.length+': <strong>'+b.sn+'</strong>...';
+
     fetch(SHEETS_URL, {
       method: 'POST',
       body: JSON.stringify({
         sheet: 'Readings',
         headers: ['Reading ID','Circuit','Battery Type','Battery S/N','Date Time','Operator','Mode','Step No','Temperature (C)','Voltage (V)','Current (A)','SP Gravity','Battery Status','Final SG','Duration','Saved At'],
-        row: [rid, c, btype, b.sn, dt, op, mode, step||'', temp||'', b.voltage||'', b.current||'', b.sg||'', b.status||'', fsg||'', duration||'', new Date().toISOString()]
+        row: [rid, c, btype, b.sn, dt, op, mode, step||'', temp||'', b.voltage||'', b.current||'', b.sg||'', b.status||'', fsg||'', duration, new Date().toISOString()]
       })
     })
     .then(function(res){ return res.json(); })
@@ -375,7 +456,6 @@ function saveReading() {
   saveNext(0);
 }
 
-// ─── COMPLETE FORMATION ───────────────────────────────────────────────────────
 function toggleComplete(c) {
   if(!formations[c]) return;
   formations[c].completeTick = !formations[c].completeTick;
